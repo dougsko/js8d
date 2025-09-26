@@ -65,37 +65,37 @@ const (
 
 // Directed commands mapping
 var directedCmds = map[string]int{
-	" HEARTBEAT": -1,
-	" HB":        -1,
-	" CQ":        -1,
-	" SNR?":      0,
-	"?":          0,
-	" DIT DIT":   1,
-	" HEARING?":  3,
-	" GRID?":     4,
-	">":          5,
-	" STATUS?":   6,
-	" STATUS":    7,
-	" HEARING":   8,
-	" MSG":       9,
-	" MSG TO:":   10,
-	" QUERY":     11,
-	" QUERY MSGS": 12,
+	" HEARTBEAT":   -1,
+	" HB":          -1,
+	" CQ":          -1,
+	" SNR?":        0,
+	"?":            0,
+	" DIT DIT":     1,
+	" HEARING?":    3,
+	" GRID?":       4,
+	">":            5,
+	" STATUS?":     6,
+	" STATUS":      7,
+	" HEARING":     8,
+	" MSG":         9,
+	" MSG TO:":     10,
+	" QUERY":       11,
+	" QUERY MSGS":  12,
 	" QUERY MSGS?": 12,
-	" QUERY CALL": 13,
-	" GRID":      15,
-	" INFO?":     16,
-	" INFO":      17,
-	" FB":        18,
-	" HW CPY?":   19,
-	" SK":        20,
-	" RR":        21,
-	" QSL?":      22,
-	" QSL":       23,
-	" CMD":       24,
-	" SNR":       25,
-	" NO":        26,
-	" YES":       27,
+	" QUERY CALL":  13,
+	" GRID":        15,
+	" INFO?":       16,
+	" INFO":        17,
+	" FB":          18,
+	" HW CPY?":     19,
+	" SK":          20,
+	" RR":          21,
+	" QSL?":        22,
+	" QSL":         23,
+	" CMD":         24,
+	" SNR":         25,
+	" NO":          26,
+	" YES":         27,
 }
 
 // Regular expressions for parsing
@@ -383,13 +383,13 @@ func IsCommandAllowed(cmd string) bool {
 func IsCommandBuffered(cmd string) bool {
 	// Commands that should be buffered for batch processing
 	bufferedCmds := map[string]bool{
-		" MSG":       true,
-		" MSG TO:":   true,
-		" QUERY":     true,
-		" QUERY MSGS": true,
+		" MSG":         true,
+		" MSG TO:":     true,
+		" QUERY":       true,
+		" QUERY MSGS":  true,
 		" QUERY MSGS?": true,
-		" INFO":      true,
-		" STATUS":    true,
+		" INFO":        true,
+		" STATUS":      true,
 	}
 	return bufferedCmds[cmd]
 }
@@ -398,11 +398,11 @@ func IsCommandBuffered(cmd string) bool {
 func IsCommandChecksumed(cmd string) int {
 	// Commands that require checksums
 	checksumCmds := map[string]int{
-		" MSG":       16,
-		" MSG TO:":   16,
-		" INFO":      16,
-		" STATUS":    16,
-		" QUERY":     32,
+		" MSG":     16,
+		" MSG TO:": 16,
+		" INFO":    16,
+		" STATUS":  16,
+		" QUERY":   32,
 	}
 	return checksumCmds[cmd]
 }
@@ -410,13 +410,13 @@ func IsCommandChecksumed(cmd string) int {
 // IsCommandAutoreply checks if a command should generate an automatic reply
 func IsCommandAutoreply(cmd string) bool {
 	autoreplyCmds := map[string]bool{
-		" SNR?":       true,
-		"?":           true,
-		" GRID?":      true,
-		" STATUS?":    true,
-		" HEARING?":   true,
-		" INFO?":      true,
-		" QUERY MSGS": true,
+		" SNR?":        true,
+		"?":            true,
+		" GRID?":       true,
+		" STATUS?":     true,
+		" HEARING?":    true,
+		" INFO?":       true,
+		" QUERY MSGS":  true,
 		" QUERY MSGS?": true,
 	}
 	return autoreplyCmds[cmd]
@@ -517,11 +517,11 @@ func Grid2Deg(grid string) (float32, float32) {
 	// JS8 grid2deg calculation (matches C++ code)
 	nlong := 180 - 20*(int(g[0])-int('A'))
 	n20d := 2 * (int(g[2]) - int('0'))
-	xminlong := float32(5) * (float32(int(g[4]) - int('a')) + 0.5)
+	xminlong := float32(5) * (float32(int(g[4])-int('a')) + 0.5)
 	dlong := float32(nlong) - float32(n20d) - xminlong/60.0
 
 	nlat := -90 + 10*(int(g[1])-int('A')) + (int(g[3]) - int('0'))
-	xminlat := float32(2.5) * (float32(int(g[5]) - int('a')) + 0.5)
+	xminlat := float32(2.5) * (float32(int(g[5])-int('a')) + 0.5)
 	dlat := float32(nlat) + xminlat/60.0
 
 	return dlong, dlat
@@ -539,7 +539,7 @@ func PackGrid(grid string) uint16 {
 	ilong := int(dlong)
 	ilat := int(dlat + 90)
 
-	return uint16(((ilong + 180) / 2) * 180 + ilat)
+	return uint16(((ilong+180)/2)*180 + ilat)
 }
 
 // UnpackGrid unpacks a 16-bit value into a grid square using JS8 format

@@ -9,7 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/js8call/js8d/pkg/audio"
 	"github.com/js8call/js8d/pkg/config"
+	"github.com/js8call/js8d/pkg/dsp"
 	"github.com/js8call/js8d/pkg/protocol"
 )
 
@@ -22,11 +24,15 @@ type CoreEngine struct {
 	mutex      sync.RWMutex
 	startTime  time.Time
 
-	// Message storage (mock for now)
+	// DSP components
+	dspEngine   *dsp.DSP
+	audioSystem *audio.AudioSystem
+
+	// Message storage
 	messages []protocol.Message
 	msgMutex sync.RWMutex
 
-	// Radio state (mock for now)
+	// Radio state
 	frequency int
 	ptt       bool
 	connected bool
@@ -38,15 +44,33 @@ type CoreEngine struct {
 
 // NewCoreEngine creates a new core engine
 func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
+	// Create audio configuration from config
+	audioConfig := audio.AudioConfig{
+		InputDevice:  cfg.Audio.InputDevice,
+		OutputDevice: cfg.Audio.OutputDevice,
+		SampleRate:   cfg.Audio.SampleRate,
+		BufferSize:   cfg.Audio.BufferSize,
+	}
+
+	// Set defaults if not specified
+	if audioConfig.SampleRate == 0 {
+		audioConfig.SampleRate = 48000
+	}
+	if audioConfig.BufferSize == 0 {
+		audioConfig.BufferSize = 1024
+	}
+
 	return &CoreEngine{
-		config:     cfg,
-		socketPath: socketPath,
-		startTime:  time.Now(),
-		frequency:  14078000, // Default JS8 frequency
-		connected:  true,     // Mock - assume connected
-		rxMessages: make(chan protocol.Message, 100),
-		txMessages: make(chan protocol.Message, 100),
-		messages:   make([]protocol.Message, 0),
+		config:      cfg,
+		socketPath:  socketPath,
+		startTime:   time.Now(),
+		frequency:   14078000, // Default JS8 frequency
+		connected:   true,     // Mock - assume connected
+		rxMessages:  make(chan protocol.Message, 100),
+		txMessages:  make(chan protocol.Message, 100),
+		messages:    make([]protocol.Message, 0),
+		dspEngine:   dsp.NewDSP(),
+		audioSystem: audio.NewAudioSystem(audioConfig),
 	}
 }
 
@@ -55,6 +79,27 @@ func (e *CoreEngine) Start() error {
 	e.mutex.Lock()
 	e.running = true
 	e.mutex.Unlock()
+
+	// Initialize DSP engine
+	if err := e.dspEngine.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize DSP engine: %w", err)
+	}
+	log.Printf("DSP engine initialized successfully")
+
+	// Initialize audio system
+	if err := e.audioSystem.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize audio system: %w", err)
+	}
+
+	// Start audio input for decoding
+	if err := e.audioSystem.StartInput(); err != nil {
+		return fmt.Errorf("failed to start audio input: %w", err)
+	}
+
+	// Start audio output for transmission
+	if err := e.audioSystem.StartOutput(); err != nil {
+		return fmt.Errorf("failed to start audio output: %w", err)
+	}
 
 	// Remove existing socket file
 	os.Remove(e.socketPath)
@@ -76,6 +121,12 @@ func (e *CoreEngine) Start() error {
 	// Start message processor
 	go e.messageProcessor()
 
+	// Start audio processor
+	go e.audioProcessor()
+
+	// Start heartbeat generator
+	go e.heartbeatGenerator()
+
 	// Accept connections
 	go e.acceptConnections()
 
@@ -90,6 +141,16 @@ func (e *CoreEngine) Stop() error {
 
 	if e.listener != nil {
 		e.listener.Close()
+	}
+
+	// Clean up audio system
+	if e.audioSystem != nil {
+		e.audioSystem.Close()
+	}
+
+	// Clean up DSP engine
+	if e.dspEngine != nil {
+		e.dspEngine.Close()
 	}
 
 	// Clean up socket file
@@ -303,12 +364,16 @@ func (e *CoreEngine) messageProcessor() {
 			e.messages = append(e.messages, msg)
 			e.msgMutex.Unlock()
 
+			// Handle auto-replies for directed messages
+			e.handleAutoReply(msg)
+
 		case msg := <-e.txMessages:
 			log.Printf("TX: %s -> %s: %s", msg.From, msg.To, msg.Message)
 
-			// TODO: Actual transmission via DSP/audio
-			// For now, just simulate transmission delay
-			time.Sleep(100 * time.Millisecond)
+			// Encode message using real DSP
+			if err := e.transmitMessage(msg); err != nil {
+				log.Printf("TX error: %v", err)
+			}
 
 		case <-time.After(1 * time.Second):
 			// Periodic processing (keep-alive, etc.)
@@ -322,4 +387,281 @@ func (e *CoreEngine) isRunning() bool {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 	return e.running
+}
+
+// transmitMessage encodes and transmits a message using the DSP engine
+func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
+	// Set PTT flag during transmission
+	e.mutex.Lock()
+	e.ptt = true
+	e.mutex.Unlock()
+
+	defer func() {
+		e.mutex.Lock()
+		e.ptt = false
+		e.mutex.Unlock()
+	}()
+
+	// Format message for JS8 transmission (12 characters max)
+	txMessage := msg.Message
+	if len(txMessage) > 12 {
+		txMessage = txMessage[:12]
+	}
+
+	// Use normal mode for now
+	mode := dsp.ModeNormal
+
+	// Encode to audio samples
+	audioData, err := e.dspEngine.EncodeMessage(txMessage, mode)
+	if err != nil {
+		return fmt.Errorf("DSP encoding failed: %w", err)
+	}
+
+	log.Printf("DSP: Encoded '%s' to %d audio samples", txMessage, len(audioData))
+
+	// Send audio data to audio system for output
+	if err := e.audioSystem.PlayAudio(audioData); err != nil {
+		return fmt.Errorf("audio output failed: %w", err)
+	}
+
+	// Wait for transmission to complete
+	duration := e.dspEngine.EstimateAudioDuration(mode)
+	time.Sleep(duration)
+
+	log.Printf("DSP: Transmission complete")
+	return nil
+}
+
+// audioProcessor handles incoming audio data and decoding
+func (e *CoreEngine) audioProcessor() {
+	inputSamples := e.audioSystem.GetInputSamples()
+
+	// Buffer for accumulating samples for decoding
+	var audioBuffer []int16
+	const bufferLimit = 15 * 48000 // 15 seconds at 48kHz max
+
+	for e.isRunning() {
+		select {
+		case samples := <-inputSamples:
+			// Accumulate audio samples
+			audioBuffer = append(audioBuffer, samples...)
+
+			// If buffer gets too large, trim it to prevent memory issues
+			if len(audioBuffer) > bufferLimit {
+				// Keep last 10 seconds worth
+				keepSamples := 10 * 48000
+				if len(audioBuffer) > keepSamples {
+					audioBuffer = audioBuffer[len(audioBuffer)-keepSamples:]
+				}
+			}
+
+			// Try to decode if we have enough samples (at least 3 seconds)
+			minSamples := 3 * 48000
+			if len(audioBuffer) >= minSamples {
+				e.attemptDecode(audioBuffer)
+			}
+
+		case <-time.After(1 * time.Second):
+			// Periodic cleanup - try to decode accumulated buffer
+			if len(audioBuffer) > 0 {
+				e.attemptDecode(audioBuffer)
+				// Clear buffer after decode attempt
+				audioBuffer = audioBuffer[:0]
+			}
+		}
+	}
+}
+
+// attemptDecode tries to decode JS8 messages from audio buffer
+func (e *CoreEngine) attemptDecode(audioBuffer []int16) {
+	if len(audioBuffer) == 0 {
+		return
+	}
+
+	// Use DSP to decode the audio buffer
+	decodeCount, err := e.dspEngine.DecodeBuffer(audioBuffer, func(result *dsp.DecodeResult) {
+		// Parse JS8 message to extract callsigns and determine message type
+		msg := e.parseJS8Message(result)
+
+		// Queue the received message
+		select {
+		case e.rxMessages <- msg:
+			log.Printf("RX decoded: %s (SNR: %ddB, Freq: %.1fHz, Type: %s)",
+				result.Message, result.SNR, result.Frequency, e.getMessageType(result.Message))
+		default:
+			log.Printf("RX buffer full, dropping message: %s", result.Message)
+		}
+	})
+
+	if err != nil {
+		log.Printf("Decode error: %v", err)
+	} else if decodeCount > 0 {
+		log.Printf("Decoded %d message(s) from audio buffer", decodeCount)
+	}
+}
+
+// parseJS8Message parses a JS8 decode result into a protocol message
+func (e *CoreEngine) parseJS8Message(result *dsp.DecodeResult) protocol.Message {
+	message := result.Message
+
+	// Parse callsigns from the message using varicode utilities
+	callsigns := dsp.ParseCallsigns(message)
+
+	var fromCall, toCall string
+
+	// Determine message structure and extract callsigns
+	if dsp.StartsWithCQ(message) {
+		// CQ messages: "CQ N0CALL EM12"
+		if len(callsigns) > 0 {
+			fromCall = callsigns[0]
+		}
+		toCall = "" // CQ is broadcast
+	} else if len(callsigns) >= 2 {
+		// Directed messages: "N0ABC N0XYZ message"
+		toCall = callsigns[0]
+		fromCall = callsigns[1]
+	} else if len(callsigns) == 1 {
+		// Single callsign - could be response or heartbeat
+		fromCall = callsigns[0]
+		if e.isDirectedToMe(message) {
+			toCall = e.config.Station.Callsign
+		}
+	}
+
+	// If we couldn't parse callsigns, mark as unknown
+	if fromCall == "" {
+		fromCall = "UNKNOWN"
+	}
+
+	return protocol.Message{
+		ID:        int(time.Now().Unix()),
+		Timestamp: time.Now(),
+		From:      fromCall,
+		To:        toCall,
+		Message:   message,
+		SNR:       float32(result.SNR),
+		Frequency: int(result.Frequency),
+		Mode:      "JS8",
+	}
+}
+
+// getMessageType determines the type of JS8 message for logging
+func (e *CoreEngine) getMessageType(message string) string {
+	if dsp.StartsWithCQ(message) {
+		return "CQ"
+	} else if dsp.StartsWithHB(message) {
+		return "HEARTBEAT"
+	} else if dsp.IsSNRCommand(message) {
+		return "SNR_REQUEST"
+	} else if e.isDirectedToMe(message) {
+		return "DIRECTED"
+	} else if len(dsp.ParseCallsigns(message)) >= 2 {
+		return "DIRECTED"
+	}
+	return "UNKNOWN"
+}
+
+// isDirectedToMe checks if a message is directed to our station
+func (e *CoreEngine) isDirectedToMe(message string) bool {
+	// Check if our callsign appears at the beginning of the message
+	myCall := e.config.Station.Callsign
+	if myCall == "" {
+		return false
+	}
+
+	// Simple check - message starts with our callsign
+	return len(message) > len(myCall) && message[:len(myCall)] == myCall
+}
+
+// handleAutoReply processes messages that require automatic responses
+func (e *CoreEngine) handleAutoReply(msg protocol.Message) {
+	// Only auto-reply to messages directed to us
+	if msg.To != e.config.Station.Callsign || msg.From == e.config.Station.Callsign {
+		return
+	}
+
+	message := msg.Message
+
+	// Check for SNR requests
+	if dsp.IsSNRCommand(message) {
+		snr := int(msg.SNR)
+		response := fmt.Sprintf("%s %s", msg.From, dsp.FormatSNR(snr))
+
+		replyMsg := protocol.Message{
+			ID:        int(time.Now().Unix()),
+			Timestamp: time.Now(),
+			From:      e.config.Station.Callsign,
+			To:        msg.From,
+			Message:   response,
+			Mode:      "JS8",
+		}
+
+		// Queue the auto-reply
+		select {
+		case e.txMessages <- replyMsg:
+			log.Printf("Auto-reply queued: SNR report %s to %s", dsp.FormatSNR(snr), msg.From)
+		default:
+			log.Printf("TX queue full, dropping auto-reply to %s", msg.From)
+		}
+	}
+
+	// TODO: Add more auto-reply handlers (GRID?, INFO?, etc.)
+}
+
+// heartbeatGenerator sends periodic heartbeat messages
+func (e *CoreEngine) heartbeatGenerator() {
+	// Send a heartbeat every 5 minutes (JS8 common practice)
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for e.isRunning() {
+		select {
+		case <-ticker.C:
+			e.sendHeartbeat()
+
+		case <-time.After(30 * time.Second):
+			// Keep the goroutine alive
+			continue
+		}
+	}
+}
+
+// sendHeartbeat sends a JS8 heartbeat message
+func (e *CoreEngine) sendHeartbeat() {
+	callsign := e.config.Station.Callsign
+	grid := e.config.Station.Grid
+
+	if callsign == "" {
+		return // Can't send heartbeat without callsign
+	}
+
+	// Format heartbeat message: "HB AUTO callsign grid"
+	var hbMessage string
+	if grid != "" {
+		hbMessage = fmt.Sprintf("HB AUTO %s %s", callsign, grid)
+	} else {
+		hbMessage = fmt.Sprintf("HB AUTO %s", callsign)
+	}
+
+	// Truncate if too long for JS8
+	if len(hbMessage) > 12 {
+		hbMessage = hbMessage[:12]
+	}
+
+	heartbeat := protocol.Message{
+		ID:        int(time.Now().Unix()),
+		Timestamp: time.Now(),
+		From:      callsign,
+		To:        "", // Heartbeats are broadcast
+		Message:   hbMessage,
+		Mode:      "JS8",
+	}
+
+	// Queue the heartbeat
+	select {
+	case e.txMessages <- heartbeat:
+		log.Printf("Heartbeat queued: %s", hbMessage)
+	default:
+		log.Printf("TX queue full, dropping heartbeat")
+	}
 }

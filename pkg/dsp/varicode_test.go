@@ -91,8 +91,8 @@ func TestIntToBits(t *testing.T) {
 		expected []bool
 	}{
 		{0, 4, []bool{false, false, false, false}},
-		{5, 4, []bool{false, true, false, true}}, // 0101
-		{15, 4, []bool{true, true, true, true}},  // 1111
+		{5, 4, []bool{false, true, false, true}},                              // 0101
+		{15, 4, []bool{true, true, true, true}},                               // 1111
 		{0x55, 8, []bool{false, true, false, true, false, true, false, true}}, // 01010101
 	}
 
@@ -119,8 +119,8 @@ func TestBitsToInt(t *testing.T) {
 		expected uint64
 	}{
 		{[]bool{false, false, false, false}, 0},
-		{[]bool{false, true, false, true}, 5},    // 0101
-		{[]bool{true, true, true, true}, 15},     // 1111
+		{[]bool{false, true, false, true}, 5},                              // 0101
+		{[]bool{true, true, true, true}, 15},                               // 1111
 		{[]bool{false, true, false, true, false, true, false, true}, 0x55}, // 01010101
 	}
 
@@ -223,7 +223,7 @@ func TestParseCallsigns(t *testing.T) {
 		input string
 		count int // Just check count, not exact matches due to regex complexity
 	}{
-		{"CQ N0CALL EM12", 1},     // Should find N0CALL
+		{"CQ N0CALL EM12", 1},    // Should find N0CALL
 		{"W1ABC/P QRT", 1},       // Should find W1ABC/P
 		{"No callsigns here", 0}, // Should find none
 		{"K1ABC DE W2XYZ", 2},    // Should find K1ABC and W2XYZ

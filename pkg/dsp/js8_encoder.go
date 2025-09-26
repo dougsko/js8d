@@ -161,8 +161,8 @@ func (e *JS8Encoder) EncodeMessage(message string, frameType int) ([]int, error)
 	}
 
 	// Generate parity and output data (29 3-bit words each)
-	parityData := tones[7:36]   // 29 parity tones
-	outputData := tones[43:72]  // 29 output tones
+	parityData := tones[7:36]  // 29 parity tones
+	outputData := tones[43:72] // 29 output tones
 
 	var outputBits int
 	var outputByte int
@@ -219,8 +219,8 @@ func (e *JS8Encoder) EncodeMessage(message string, frameType int) ([]int, error)
 // GenerateAudio converts tone sequence to audio samples
 func (e *JS8Encoder) GenerateAudio(tones []int, sampleRate int) []int16 {
 	// JS8 Normal mode parameters
-	const duration = 15.0   // seconds
-	const baseFreq = 1000.0 // Hz
+	const duration = 15.0                       // seconds
+	const baseFreq = 1000.0                     // Hz
 	freqSpacing := float64(sampleRate) / 2048.0 // ~5.86 Hz for 12kHz
 
 	toneDuration := duration / float64(len(tones))

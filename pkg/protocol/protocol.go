@@ -33,15 +33,15 @@ type Message struct {
 
 // Status represents the current daemon status
 type Status struct {
-	Callsign   string    `json:"callsign"`
-	Grid       string    `json:"grid"`
-	Frequency  int       `json:"frequency"`
-	Mode       string    `json:"mode"`
-	PTT        bool      `json:"ptt"`
-	Connected  bool      `json:"connected"`
-	Uptime     string    `json:"uptime"`
-	StartTime  time.Time `json:"start_time"`
-	Version    string    `json:"version"`
+	Callsign  string    `json:"callsign"`
+	Grid      string    `json:"grid"`
+	Frequency int       `json:"frequency"`
+	Mode      string    `json:"mode"`
+	PTT       bool      `json:"ptt"`
+	Connected bool      `json:"connected"`
+	Uptime    string    `json:"uptime"`
+	StartTime time.Time `json:"start_time"`
+	Version   string    `json:"version"`
 }
 
 // ParseCommand parses a text command into a Command struct

@@ -49,9 +49,9 @@ type Config struct {
 	} `yaml:"logging"`
 
 	Hardware struct {
-		PTTGPIOPin    int  `yaml:"ptt_gpio_pin"`
-		StatusLEDPin  int  `yaml:"status_led_pin"`
-		EnableGPIO    bool `yaml:"enable_gpio"`
+		PTTGPIOPin   int  `yaml:"ptt_gpio_pin"`
+		StatusLEDPin int  `yaml:"status_led_pin"`
+		EnableGPIO   bool `yaml:"enable_gpio"`
 	} `yaml:"hardware"`
 }
 

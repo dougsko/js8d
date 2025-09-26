@@ -1,0 +1,39 @@
+# js8d Configuration Example
+# Copy to config.yaml and customize for your station
+
+station:
+  callsign: "N0CALL"          # Your amateur radio callsign
+  grid: "EM12cd"              # Your Maidenhead grid square
+
+radio:
+  device: "/dev/ttyUSB0"      # Serial device for radio control
+  model: "Hamlib"             # Radio model (Hamlib auto-detect)
+  baud_rate: 4800             # Serial baud rate
+  ptt_method: "CAT"           # PTT method: CAT, GPIO, or NONE
+
+audio:
+  input_device: "hw:1,0"      # ALSA audio input device
+  output_device: "hw:1,0"     # ALSA audio output device
+  sample_rate: 48000          # Audio sample rate (48000 recommended)
+  buffer_size: 1024           # Audio buffer size
+
+web:
+  port: 8080                  # Web interface port
+  bind_address: "0.0.0.0"     # Bind address (0.0.0.0 for all interfaces)
+
+api:
+  websocket_port: 8081        # WebSocket port for real-time updates
+  unix_socket: "/tmp/js8d.sock"  # Unix domain socket path
+
+storage:
+  database_path: "./js8d.db"  # SQLite database file path
+  max_messages: 10000         # Maximum stored messages
+
+logging:
+  level: "info"               # Log level: debug, info, warn, error
+  file: ""                    # Log file path (empty for stdout)
+
+hardware:
+  ptt_gpio_pin: 18            # GPIO pin for PTT control (BCM numbering)
+  status_led_pin: 24          # GPIO pin for status LED
+  enable_gpio: false          # Enable GPIO features (requires root on Pi)

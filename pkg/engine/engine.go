@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/js8call/js8d/pkg/audio"
 	"github.com/js8call/js8d/pkg/config"
 	"github.com/js8call/js8d/pkg/dsp"
+	"github.com/js8call/js8d/pkg/hardware"
 	"github.com/js8call/js8d/pkg/protocol"
 )
 
@@ -24,9 +24,9 @@ type CoreEngine struct {
 	mutex      sync.RWMutex
 	startTime  time.Time
 
-	// DSP components
-	dspEngine   *dsp.DSP
-	audioSystem *audio.AudioSystem
+	// DSP and hardware components
+	dspEngine       *dsp.DSP
+	hardwareManager *hardware.HardwareManager
 
 	// Message storage
 	messages []protocol.Message
@@ -44,33 +44,47 @@ type CoreEngine struct {
 
 // NewCoreEngine creates a new core engine
 func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
-	// Create audio configuration from config
-	audioConfig := audio.AudioConfig{
-		InputDevice:  cfg.Audio.InputDevice,
-		OutputDevice: cfg.Audio.OutputDevice,
-		SampleRate:   cfg.Audio.SampleRate,
-		BufferSize:   cfg.Audio.BufferSize,
+	// Create hardware configuration from config
+	hardwareConfig := hardware.HardwareConfig{
+		EnableGPIO:     cfg.Hardware.EnableGPIO,
+		PTTGPIOPin:     cfg.Hardware.PTTGPIOPin,
+		StatusLEDPin:   cfg.Hardware.StatusLEDPin,
+		EnableOLED:     cfg.Hardware.EnableOLED,
+		OLEDI2CAddress: cfg.Hardware.OLEDI2CAddress,
+		OLEDWidth:      cfg.Hardware.OLEDWidth,
+		OLEDHeight:     cfg.Hardware.OLEDHeight,
+		EnableAudio:    true, // Always enable audio for radio operations
+		AudioInput:     cfg.Audio.InputDevice,
+		AudioOutput:    cfg.Audio.OutputDevice,
+		SampleRate:     cfg.Audio.SampleRate,
+		BufferSize:     cfg.Audio.BufferSize,
 	}
 
 	// Set defaults if not specified
-	if audioConfig.SampleRate == 0 {
-		audioConfig.SampleRate = 48000
+	if hardwareConfig.SampleRate == 0 {
+		hardwareConfig.SampleRate = 48000
 	}
-	if audioConfig.BufferSize == 0 {
-		audioConfig.BufferSize = 1024
+	if hardwareConfig.BufferSize == 0 {
+		hardwareConfig.BufferSize = 1024
+	}
+	if hardwareConfig.OLEDWidth == 0 {
+		hardwareConfig.OLEDWidth = 128
+	}
+	if hardwareConfig.OLEDHeight == 0 {
+		hardwareConfig.OLEDHeight = 64
 	}
 
 	return &CoreEngine{
-		config:      cfg,
-		socketPath:  socketPath,
-		startTime:   time.Now(),
-		frequency:   14078000, // Default JS8 frequency
-		connected:   true,     // Mock - assume connected
-		rxMessages:  make(chan protocol.Message, 100),
-		txMessages:  make(chan protocol.Message, 100),
-		messages:    make([]protocol.Message, 0),
-		dspEngine:   dsp.NewDSP(),
-		audioSystem: audio.NewAudioSystem(audioConfig),
+		config:          cfg,
+		socketPath:      socketPath,
+		startTime:       time.Now(),
+		frequency:       14078000, // Default JS8 frequency
+		connected:       true,     // Mock - assume connected
+		rxMessages:      make(chan protocol.Message, 100),
+		txMessages:      make(chan protocol.Message, 100),
+		messages:        make([]protocol.Message, 0),
+		dspEngine:       dsp.NewDSP(),
+		hardwareManager: hardware.NewHardwareManager(hardwareConfig),
 	}
 }
 
@@ -86,19 +100,19 @@ func (e *CoreEngine) Start() error {
 	}
 	log.Printf("DSP engine initialized successfully")
 
-	// Initialize audio system
-	if err := e.audioSystem.Initialize(); err != nil {
-		return fmt.Errorf("failed to initialize audio system: %w", err)
+	// Initialize hardware manager
+	if err := e.hardwareManager.Initialize(); err != nil {
+		return fmt.Errorf("failed to initialize hardware manager: %w", err)
 	}
 
 	// Start audio input for decoding
-	if err := e.audioSystem.StartInput(); err != nil {
-		return fmt.Errorf("failed to start audio input: %w", err)
+	if err := e.hardwareManager.StartAudioInput(); err != nil {
+		log.Printf("Warning: failed to start audio input: %v", err)
 	}
 
 	// Start audio output for transmission
-	if err := e.audioSystem.StartOutput(); err != nil {
-		return fmt.Errorf("failed to start audio output: %w", err)
+	if err := e.hardwareManager.StartAudioOutput(); err != nil {
+		log.Printf("Warning: failed to start audio output: %v", err)
 	}
 
 	// Remove existing socket file
@@ -143,9 +157,9 @@ func (e *CoreEngine) Stop() error {
 		e.listener.Close()
 	}
 
-	// Clean up audio system
-	if e.audioSystem != nil {
-		e.audioSystem.Close()
+	// Clean up hardware manager
+	if e.hardwareManager != nil {
+		e.hardwareManager.Close()
 	}
 
 	// Clean up DSP engine
@@ -254,9 +268,32 @@ func (e *CoreEngine) handleStatus() *protocol.Response {
 		Version:   "0.1.0-dev",
 	}
 
-	return protocol.NewSuccessResponse(map[string]interface{}{
+	// Add hardware status if hardware manager is available
+	data := map[string]interface{}{
 		"status": status,
-	})
+	}
+
+	if e.hardwareManager != nil && e.hardwareManager.IsInitialized() {
+		hardwareStatus := map[string]interface{}{
+			"initialized": true,
+			"ptt_active":  e.hardwareManager.GetPTT(),
+			"config":      e.hardwareManager.GetConfig(),
+		}
+
+		// Add audio status if available
+		if audio := e.hardwareManager.GetAudio(); audio != nil {
+			hardwareStatus["audio"] = map[string]interface{}{
+				"recording":   audio.IsRecording(),
+				"playing":     audio.IsPlaying(),
+				"sample_rate": audio.GetSampleRate(),
+				"buffer_size": audio.GetBufferSize(),
+			}
+		}
+
+		data["hardware"] = hardwareStatus
+	}
+
+	return protocol.NewSuccessResponse(data)
 }
 
 // handleMessages returns message history
@@ -364,6 +401,9 @@ func (e *CoreEngine) messageProcessor() {
 			e.messages = append(e.messages, msg)
 			e.msgMutex.Unlock()
 
+			// Update OLED display with received message
+			e.updateOLEDDisplay(fmt.Sprintf("RX: %s", msg.Message))
+
 			// Handle auto-replies for directed messages
 			e.handleAutoReply(msg)
 
@@ -391,12 +431,22 @@ func (e *CoreEngine) isRunning() bool {
 
 // transmitMessage encodes and transmits a message using the DSP engine
 func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
-	// Set PTT flag during transmission
+	// Set PTT flag and hardware PTT during transmission
 	e.mutex.Lock()
 	e.ptt = true
 	e.mutex.Unlock()
 
+	// Activate hardware PTT
+	if err := e.hardwareManager.SetPTT(true); err != nil {
+		log.Printf("Warning: failed to set PTT: %v", err)
+	}
+
 	defer func() {
+		// Deactivate hardware PTT
+		if err := e.hardwareManager.SetPTT(false); err != nil {
+			log.Printf("Warning: failed to clear PTT: %v", err)
+		}
+
 		e.mutex.Lock()
 		e.ptt = false
 		e.mutex.Unlock()
@@ -419,8 +469,8 @@ func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
 
 	log.Printf("DSP: Encoded '%s' to %d audio samples", txMessage, len(audioData))
 
-	// Send audio data to audio system for output
-	if err := e.audioSystem.PlayAudio(audioData); err != nil {
+	// Send audio data to hardware audio system for output
+	if err := e.hardwareManager.PlayAudio(audioData); err != nil {
 		return fmt.Errorf("audio output failed: %w", err)
 	}
 
@@ -429,12 +479,22 @@ func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
 	time.Sleep(duration)
 
 	log.Printf("DSP: Transmission complete")
+
+	// Update OLED display with transmission status
+	e.updateOLEDDisplay(fmt.Sprintf("TX: %s", txMessage))
+
 	return nil
 }
 
 // audioProcessor handles incoming audio data and decoding
 func (e *CoreEngine) audioProcessor() {
-	inputSamples := e.audioSystem.GetInputSamples()
+	inputSamples := e.hardwareManager.GetAudioInputSamples()
+
+	// If audio is not available, just exit
+	if inputSamples == nil {
+		log.Printf("Audio input not available, audio processor disabled")
+		return
+	}
 
 	// Buffer for accumulating samples for decoding
 	var audioBuffer []int16
@@ -623,6 +683,21 @@ func (e *CoreEngine) heartbeatGenerator() {
 			// Keep the goroutine alive
 			continue
 		}
+	}
+}
+
+// updateOLEDDisplay updates the OLED display with current station info
+func (e *CoreEngine) updateOLEDDisplay(lastMessage string) {
+	if e.hardwareManager == nil {
+		return
+	}
+
+	callsign := e.config.Station.Callsign
+	grid := e.config.Station.Grid
+	frequency := e.frequency
+
+	if err := e.hardwareManager.UpdateOLED(callsign, grid, frequency, lastMessage); err != nil {
+		log.Printf("Warning: failed to update OLED: %v", err)
 	}
 }
 

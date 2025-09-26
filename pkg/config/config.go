@@ -49,9 +49,13 @@ type Config struct {
 	} `yaml:"logging"`
 
 	Hardware struct {
-		PTTGPIOPin   int  `yaml:"ptt_gpio_pin"`
-		StatusLEDPin int  `yaml:"status_led_pin"`
-		EnableGPIO   bool `yaml:"enable_gpio"`
+		PTTGPIOPin     int  `yaml:"ptt_gpio_pin"`
+		StatusLEDPin   int  `yaml:"status_led_pin"`
+		EnableGPIO     bool `yaml:"enable_gpio"`
+		EnableOLED     bool `yaml:"enable_oled"`
+		OLEDI2CAddress int  `yaml:"oled_i2c_address"`
+		OLEDWidth      int  `yaml:"oled_width"`
+		OLEDHeight     int  `yaml:"oled_height"`
 	} `yaml:"hardware"`
 }
 

@@ -1,0 +1,124 @@
+# js8d Docker Configuration
+# This configuration is optimized for containerized deployment
+
+# Station Configuration
+station:
+  callsign: "YOUR_CALLSIGN"  # Replace with your amateur radio callsign
+  grid: "FN31pr"             # Replace with your 6-character grid square
+
+# Audio Configuration
+audio:
+  # Note: Audio devices in containers require special configuration
+  # For development/testing without actual audio hardware
+  input_device: "default"
+  output_device: "default"
+
+  # Alternative: Use ALSA devices if available in container
+  # input_device: "hw:0,0"
+  # output_device: "hw:0,0"
+
+  # Audio parameters
+  sample_rate: 48000
+  buffer_size: 1024
+  input_channels: 1
+  output_channels: 1
+
+# Radio Configuration
+radio:
+  # Disable radio control by default in containers
+  use_hamlib: false
+
+  # If you need radio control in container, uncomment and configure:
+  # use_hamlib: true
+  # device: "/dev/ttyUSB0"     # Serial device (must be mapped in docker-compose.yml)
+  # model:  "311"              # Hamlib radio model
+  # baud_rate: 9600
+
+# Web Interface Configuration
+web:
+  # Bind to all interfaces in container
+  bind_address: "0.0.0.0"
+  port: 8080
+
+  # CORS settings for container deployments
+  enable_cors: true
+  allowed_origins: ["*"]  # Restrict this in production
+
+  # Performance settings
+  read_timeout: 30
+  write_timeout: 30
+  max_request_size: 1048576
+
+# API Configuration
+api:
+  # Unix socket path in container
+  unix_socket: "/run/js8d/js8d.sock"
+
+  # WebSocket settings
+  enable_websockets: true
+  websocket_ping_interval: 30
+
+# Database Configuration
+database:
+  # Database file in persistent volume
+  type: "sqlite"
+  path: "/var/lib/js8d/messages.db"
+
+  # Connection settings
+  max_connections: 5
+  max_idle_connections: 2
+  connection_timeout: 30
+
+  # Message storage
+  max_messages: 5000
+  cleanup_interval: "24h"
+  retain_days: 30
+
+  # Performance settings
+  wal_mode: true
+  synchronous: "NORMAL"
+  cache_size: 1000
+
+  # Backup settings
+  auto_backup: true
+  backup_interval: "24h"
+  backup_directory: "/var/lib/js8d/backups"
+  max_backups: 7
+
+# Hardware Configuration
+hardware:
+  # Disable GPIO in containers by default
+  enable_gpio: false
+
+  # Audio system
+  enable_audio: true
+  audio_priority: "normal"
+
+# Logging Configuration
+logging:
+  # Container logging goes to stdout/stderr
+  level: "info"
+
+  # Optional file logging
+  file: "/var/log/js8d/js8d.log"
+  max_size: 50
+  max_backups: 3
+  max_age: 7
+
+# Docker-specific optimizations
+# These settings are tuned for containerized environments
+
+# Reduce resource usage
+dsp:
+  # Use simpler DSP algorithms if available
+  optimization_level: "balanced"
+
+# Network settings for containers
+network:
+  # Timeout settings
+  dial_timeout: "10s"
+  keep_alive: "30s"
+
+  # Buffer sizes
+  read_buffer_size: 4096
+  write_buffer_size: 4096

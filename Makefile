@@ -129,22 +129,158 @@ docker-build:
 docker-run:
 	docker run -p 8080:8080 -v $(PWD)/configs:/etc/js8d js8d:$(VERSION)
 
+# Distribution packages
+DIST_DIR := dist
+PACKAGE_FILES := README.md LICENSE configs/ docs/ web/ scripts/
+
+.PHONY: dist-clean
+dist-clean:
+	rm -rf $(DIST_DIR)
+
+.PHONY: dist-prepare
+dist-prepare: dist-clean
+	mkdir -p $(DIST_DIR)
+
+.PHONY: dist-linux-amd64
+dist-linux-amd64: dist-prepare
+	@echo "Building Linux AMD64 distribution package..."
+	mkdir -p $(DIST_DIR)/js8d-linux-amd64/{bin,configs,docs,web,scripts}
+	GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-amd64/bin/js8d $(MAIN_PACKAGE)
+	GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-amd64/bin/js8ctl ./cmd/js8ctl
+	cp README.md LICENSE $(DIST_DIR)/js8d-linux-amd64/
+	cp -r configs/* $(DIST_DIR)/js8d-linux-amd64/configs/
+	cp -r docs/* $(DIST_DIR)/js8d-linux-amd64/docs/
+	cp -r web/* $(DIST_DIR)/js8d-linux-amd64/web/
+	cp -r scripts/* $(DIST_DIR)/js8d-linux-amd64/scripts/
+	cd $(DIST_DIR) && tar -czf js8d-linux-amd64.tar.gz js8d-linux-amd64/
+
+.PHONY: dist-linux-arm64
+dist-linux-arm64: dist-prepare
+	@echo "Building Linux ARM64 distribution package..."
+	mkdir -p $(DIST_DIR)/js8d-linux-arm64/{bin,configs,docs,web,scripts}
+	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-arm64/bin/js8d $(MAIN_PACKAGE)
+	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-arm64/bin/js8ctl ./cmd/js8ctl
+	cp README.md LICENSE $(DIST_DIR)/js8d-linux-arm64/
+	cp -r configs/* $(DIST_DIR)/js8d-linux-arm64/configs/
+	cp -r docs/* $(DIST_DIR)/js8d-linux-arm64/docs/
+	cp -r web/* $(DIST_DIR)/js8d-linux-arm64/web/
+	cp -r scripts/* $(DIST_DIR)/js8d-linux-arm64/scripts/
+	cd $(DIST_DIR) && tar -czf js8d-linux-arm64.tar.gz js8d-linux-arm64/
+
+.PHONY: dist-linux-arm
+dist-linux-arm: dist-prepare
+	@echo "Building Linux ARM distribution package..."
+	mkdir -p $(DIST_DIR)/js8d-linux-arm/{bin,configs,docs,web,scripts}
+	GOOS=linux GOARCH=arm GOARM=7 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-arm/bin/js8d $(MAIN_PACKAGE)
+	GOOS=linux GOARCH=arm GOARM=7 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-arm/bin/js8ctl ./cmd/js8ctl
+	cp README.md LICENSE $(DIST_DIR)/js8d-linux-arm/
+	cp -r configs/* $(DIST_DIR)/js8d-linux-arm/configs/
+	cp -r docs/* $(DIST_DIR)/js8d-linux-arm/docs/
+	cp -r web/* $(DIST_DIR)/js8d-linux-arm/web/
+	cp -r scripts/* $(DIST_DIR)/js8d-linux-arm/scripts/
+	cd $(DIST_DIR) && tar -czf js8d-linux-arm.tar.gz js8d-linux-arm/
+
+.PHONY: dist-linux-arm6
+dist-linux-arm6: dist-prepare
+	@echo "Building Linux ARM6 distribution package..."
+	mkdir -p $(DIST_DIR)/js8d-linux-arm6/{bin,configs,docs,web,scripts}
+	GOOS=linux GOARCH=arm GOARM=6 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-arm6/bin/js8d $(MAIN_PACKAGE)
+	GOOS=linux GOARCH=arm GOARM=6 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-linux-arm6/bin/js8ctl ./cmd/js8ctl
+	cp README.md LICENSE $(DIST_DIR)/js8d-linux-arm6/
+	cp -r configs/* $(DIST_DIR)/js8d-linux-arm6/configs/
+	cp -r docs/* $(DIST_DIR)/js8d-linux-arm6/docs/
+	cp -r web/* $(DIST_DIR)/js8d-linux-arm6/web/
+	cp -r scripts/* $(DIST_DIR)/js8d-linux-arm6/scripts/
+	cd $(DIST_DIR) && tar -czf js8d-linux-arm6.tar.gz js8d-linux-arm6/
+
+.PHONY: dist-darwin-amd64
+dist-darwin-amd64: dist-prepare
+	@echo "Building macOS AMD64 distribution package..."
+	mkdir -p $(DIST_DIR)/js8d-darwin-amd64/{bin,configs,docs,web,scripts}
+	GOOS=darwin GOARCH=amd64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-darwin-amd64/bin/js8d $(MAIN_PACKAGE)
+	GOOS=darwin GOARCH=amd64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-darwin-amd64/bin/js8ctl ./cmd/js8ctl
+	cp README.md LICENSE $(DIST_DIR)/js8d-darwin-amd64/
+	cp -r configs/* $(DIST_DIR)/js8d-darwin-amd64/configs/
+	cp -r docs/* $(DIST_DIR)/js8d-darwin-amd64/docs/
+	cp -r web/* $(DIST_DIR)/js8d-darwin-amd64/web/
+	cp -r scripts/* $(DIST_DIR)/js8d-darwin-amd64/scripts/
+	cd $(DIST_DIR) && tar -czf js8d-darwin-amd64.tar.gz js8d-darwin-amd64/
+
+.PHONY: dist-darwin-arm64
+dist-darwin-arm64: dist-prepare
+	@echo "Building macOS ARM64 distribution package..."
+	mkdir -p $(DIST_DIR)/js8d-darwin-arm64/{bin,configs,docs,web,scripts}
+	GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-darwin-arm64/bin/js8d $(MAIN_PACKAGE)
+	GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) -o $(DIST_DIR)/js8d-darwin-arm64/bin/js8ctl ./cmd/js8ctl
+	cp README.md LICENSE $(DIST_DIR)/js8d-darwin-arm64/
+	cp -r configs/* $(DIST_DIR)/js8d-darwin-arm64/configs/
+	cp -r docs/* $(DIST_DIR)/js8d-darwin-arm64/docs/
+	cp -r web/* $(DIST_DIR)/js8d-darwin-arm64/web/
+	cp -r scripts/* $(DIST_DIR)/js8d-darwin-arm64/scripts/
+	cd $(DIST_DIR) && tar -czf js8d-darwin-arm64.tar.gz js8d-darwin-arm64/
+
+.PHONY: dist-all
+dist-all: dist-linux-amd64 dist-linux-arm64 dist-linux-arm dist-linux-arm6 dist-darwin-amd64 dist-darwin-arm64
+	@echo "All distribution packages built in $(DIST_DIR)/"
+	@ls -la $(DIST_DIR)/*.tar.gz
+
+.PHONY: dist-checksums
+dist-checksums:
+	@echo "Generating checksums..."
+	cd $(DIST_DIR) && sha256sum *.tar.gz > SHA256SUMS
+	@echo "Checksums generated in $(DIST_DIR)/SHA256SUMS"
+
+# Release preparation
+.PHONY: release
+release: test fmt vet dist-all dist-checksums
+	@echo "Release packages ready in $(DIST_DIR)/"
+
 # Help
 .PHONY: help
 help:
 	@echo "js8d Makefile targets:"
 	@echo ""
-	@echo "  build          - Build js8d binary"
+	@echo "Build targets:"
+	@echo "  build          - Build js8d binary for current platform"
 	@echo "  build-all      - Build for all supported platforms"
+	@echo ""
+	@echo "Distribution targets:"
+	@echo "  dist-linux-amd64   - Build Linux AMD64 distribution package"
+	@echo "  dist-linux-arm64   - Build Linux ARM64 distribution package"
+	@echo "  dist-linux-arm     - Build Linux ARM distribution package"
+	@echo "  dist-linux-arm6    - Build Linux ARM6 distribution package"
+	@echo "  dist-darwin-amd64  - Build macOS AMD64 distribution package"
+	@echo "  dist-darwin-arm64  - Build macOS ARM64 distribution package"
+	@echo "  dist-all           - Build all distribution packages"
+	@echo "  dist-checksums     - Generate SHA256 checksums for packages"
+	@echo "  release            - Complete release build (test + dist + checksums)"
+	@echo ""
+	@echo "Development targets:"
 	@echo "  run            - Build and run with example config"
 	@echo "  dev            - Run in development mode"
 	@echo "  test           - Run tests"
+	@echo "  test-coverage  - Run tests with coverage report"
+	@echo ""
+	@echo "Code quality:"
 	@echo "  fmt            - Format Go code"
 	@echo "  vet            - Run go vet"
+	@echo "  lint           - Run golangci-lint"
+	@echo ""
+	@echo "Dependencies:"
 	@echo "  deps           - Download dependencies"
-	@echo "  clean          - Clean build artifacts"
+	@echo "  deps-update    - Update dependencies"
+	@echo ""
+	@echo "Installation:"
 	@echo "  install        - Simple install to system"
 	@echo "  install-service - Production install with systemd service"
 	@echo "  uninstall      - Remove simple installation"
 	@echo "  uninstall-service - Remove systemd service installation"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  dist-clean     - Clean distribution packages"
+	@echo ""
+	@echo "Other:"
+	@echo "  docker-build   - Build Docker image"
+	@echo "  docker-run     - Run Docker container"
 	@echo "  help           - Show this help"

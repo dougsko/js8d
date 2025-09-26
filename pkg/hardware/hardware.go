@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"sync"
+
+	"github.com/dougsko/js8d/pkg/verbose"
 )
 
 // HardwareConfig represents hardware configuration
@@ -156,7 +158,7 @@ func (h *HardwareManager) Initialize() error {
 
 		// Choose between hamlib and mock radio based on configuration
 		if h.config.UseHamlib {
-			log.Printf("Hardware: Using Hamlib for radio control")
+			verbose.Printf("Hardware: Using Hamlib for radio control")
 			h.radio = NewHamlibRadio(radioConfig)
 		} else {
 			log.Printf("Hardware: Using mock radio for testing")
@@ -592,7 +594,7 @@ func (h *HardwareManager) RetryRadioConnection() error {
 
 	// Choose between hamlib and mock radio based on configuration
 	if h.config.UseHamlib {
-		log.Printf("Hardware: Using Hamlib for radio control")
+		verbose.Printf("Hardware: Using Hamlib for radio control")
 		h.radio = NewHamlibRadio(radioConfig)
 	} else {
 		log.Printf("Hardware: Using mock radio for testing")
@@ -622,7 +624,7 @@ func (h *HardwareManager) UpdateRadioConfig(model, device string, baudRate int, 
 	h.config.UseHamlib = useHamlib
 	h.config.EnableRadio = true
 
-	log.Printf("Hardware: Radio configuration updated: Model=%s, Device=%s, Baud=%d, UseHamlib=%t",
+	verbose.Printf("Hardware: Radio configuration updated: Model=%s, Device=%s, Baud=%d, UseHamlib=%t",
 		model, device, baudRate, useHamlib)
 
 	return nil

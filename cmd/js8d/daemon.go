@@ -21,6 +21,7 @@ type JS8Daemon struct {
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
+	verbose    bool
 
 	// Core components
 	coreEngine   *engine.CoreEngine
@@ -32,7 +33,7 @@ type JS8Daemon struct {
 }
 
 // NewJS8Daemon creates a new daemon instance with config path for reloading
-func NewJS8Daemon(cfg *config.Config, configPath string) (*JS8Daemon, error) {
+func NewJS8Daemon(cfg *config.Config, configPath string, verbose bool) (*JS8Daemon, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	socketPath := cfg.API.UnixSocket
@@ -45,6 +46,7 @@ func NewJS8Daemon(cfg *config.Config, configPath string) (*JS8Daemon, error) {
 		configPath:   configPath,
 		ctx:          ctx,
 		cancel:       cancel,
+		verbose:      verbose,
 		socketPath:   socketPath,
 		socketClient: client.NewSocketClient(socketPath),
 	}

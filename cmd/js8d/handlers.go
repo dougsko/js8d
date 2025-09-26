@@ -170,6 +170,44 @@ func (d *JS8Daemon) handleSaveConfig(c *gin.Context) {
 		return
 	}
 
+	// Validate audio device configuration if present
+	if audioConfig, exists := newConfig["Audio"]; exists {
+		if audioMap, ok := audioConfig.(map[string]interface{}); ok {
+			warnings := []string{}
+
+			// Validate input device if specified
+			if inputDevice, exists := audioMap["InputDevice"]; exists {
+				if deviceStr, ok := inputDevice.(string); ok && deviceStr != "" && deviceStr != "default" {
+					if err := validateAudioDevice(deviceStr, "input"); err != nil {
+						warning := fmt.Sprintf("Input device '%s' validation failed: %v", deviceStr, err)
+						log.Printf("Audio validation warning: %s", warning)
+						warnings = append(warnings, warning)
+					}
+				}
+			}
+
+			// Validate output device if specified
+			if outputDevice, exists := audioMap["OutputDevice"]; exists {
+				if deviceStr, ok := outputDevice.(string); ok && deviceStr != "" && deviceStr != "default" {
+					if err := validateAudioDevice(deviceStr, "output"); err != nil {
+						warning := fmt.Sprintf("Output device '%s' validation failed: %v", deviceStr, err)
+						log.Printf("Audio validation warning: %s", warning)
+						warnings = append(warnings, warning)
+					}
+				}
+			}
+
+			// Return warnings if any validation failed
+			if len(warnings) > 0 {
+				c.JSON(http.StatusOK, gin.H{
+					"status":   "saved_with_warnings",
+					"warnings": warnings,
+				})
+				// Continue with save despite warnings
+			}
+		}
+	}
+
 	// Convert to YAML and save to file
 	yamlData, err := yaml.Marshal(newConfig)
 	if err != nil {
@@ -353,6 +391,69 @@ type AudioDeviceInfo struct {
 	Name     string `json:"name"`
 	IsInput  bool   `json:"is_input"`
 	IsOutput bool   `json:"is_output"`
+}
+
+// validateAudioDevice validates that an audio device can be opened and used
+func validateAudioDevice(deviceName, deviceType string) error {
+	// For now, we'll do basic validation - check if device file exists on Linux
+	if runtime.GOOS == "linux" {
+		// ALSA device names like "hw:0,0" or "plughw:0,0"
+		if strings.HasPrefix(deviceName, "hw:") || strings.HasPrefix(deviceName, "plughw:") {
+			// Parse ALSA device name format hw:card,device
+			parts := strings.Split(strings.TrimPrefix(strings.TrimPrefix(deviceName, "plughw:"), "hw:"), ",")
+			if len(parts) >= 1 {
+				cardNum := parts[0]
+				// Check if the ALSA card exists
+				cardPath := fmt.Sprintf("/proc/asound/card%s", cardNum)
+				if _, err := os.Stat(cardPath); err != nil {
+					return fmt.Errorf("ALSA card %s not found", cardNum)
+				}
+
+				// Check if device node exists
+				devicePath := fmt.Sprintf("/dev/snd/controlC%s", cardNum)
+				if _, err := os.Stat(devicePath); err != nil {
+					return fmt.Errorf("ALSA device node %s not accessible", devicePath)
+				}
+
+				log.Printf("Audio device validation: %s device '%s' appears valid", deviceType, deviceName)
+				return nil
+			}
+		}
+
+		// For other device names, just log a warning
+		log.Printf("Audio device validation: Cannot validate non-standard device name '%s'", deviceName)
+		return nil
+	}
+
+	// On macOS, we could validate against the available devices list
+	if runtime.GOOS == "darwin" {
+		devices, err := getAvailableAudioDevices()
+		if err != nil {
+			log.Printf("Audio device validation: Cannot enumerate devices for validation: %v", err)
+			return nil // Don't fail validation if we can't enumerate
+		}
+
+		// Check if the device name exists in the available devices
+		for _, device := range devices {
+			if strings.TrimSpace(device.Name) == deviceName {
+				// Check if device supports the required direction
+				if deviceType == "input" && !device.IsInput {
+					return fmt.Errorf("device '%s' does not support input", deviceName)
+				}
+				if deviceType == "output" && !device.IsOutput {
+					return fmt.Errorf("device '%s' does not support output", deviceName)
+				}
+				log.Printf("Audio device validation: %s device '%s' validated successfully", deviceType, deviceName)
+				return nil
+			}
+		}
+
+		return fmt.Errorf("device '%s' not found in available devices", deviceName)
+	}
+
+	// For other platforms, just log and accept
+	log.Printf("Audio device validation: Platform-specific validation not implemented for %s", runtime.GOOS)
+	return nil
 }
 
 // handleGetSerialDevices returns available serial/USB devices

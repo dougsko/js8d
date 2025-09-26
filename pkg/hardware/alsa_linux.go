@@ -50,9 +50,12 @@ func init() {
 		audio := NewALSAAudio(config)
 		// Test if ALSA is actually available by trying to initialize
 		if err := audio.Initialize(); err != nil {
+			log.Printf("ALSA: Initialization failed: %v", err)
+			log.Printf("ALSA: Falling back to mock audio - check device configuration")
 			audio.Close()
 			return nil
 		}
+		log.Printf("ALSA: Real ALSA audio system successfully initialized")
 		return audio
 	}
 }
@@ -108,19 +111,29 @@ func (a *ALSAAudio) Initialize() error {
 func (a *ALSAAudio) initializeInput() error {
 	log.Printf("ALSA: Setting up input device: %s", a.config.InputDevice)
 
+	// Validate device existence before attempting to open
+	if err := a.validateDeviceExists(a.config.InputDevice, "input"); err != nil {
+		return fmt.Errorf("input device validation failed: %w", err)
+	}
+
 	// Open PCM device for recording
 	deviceName := C.CString(a.config.InputDevice)
 	defer C.free(unsafe.Pointer(deviceName))
 
 	ret := C.snd_pcm_open(&a.inputHandle, deviceName, C.SND_PCM_STREAM_CAPTURE, 0)
 	if ret < 0 {
-		return fmt.Errorf("unable to open input device %s: %s",
-			a.config.InputDevice, C.GoString(C.alsa_strerror_wrapper(ret)))
+		alsaError := C.GoString(C.alsa_strerror_wrapper(ret))
+		log.Printf("ALSA: Failed to open input device %s: %s (error code: %d)",
+			a.config.InputDevice, alsaError, int(ret))
+		return fmt.Errorf("unable to open input device %s: %s (error code: %d)",
+			a.config.InputDevice, alsaError, int(ret))
 	}
 
 	// Configure hardware parameters
 	if err := a.configureHardwareParams(a.inputHandle, "input"); err != nil {
+		log.Printf("ALSA: Hardware parameter configuration failed for input device, closing handle")
 		C.snd_pcm_close(a.inputHandle)
+		a.inputHandle = nil
 		return err
 	}
 
@@ -132,19 +145,29 @@ func (a *ALSAAudio) initializeInput() error {
 func (a *ALSAAudio) initializeOutput() error {
 	log.Printf("ALSA: Setting up output device: %s", a.config.OutputDevice)
 
+	// Validate device existence before attempting to open
+	if err := a.validateDeviceExists(a.config.OutputDevice, "output"); err != nil {
+		return fmt.Errorf("output device validation failed: %w", err)
+	}
+
 	// Open PCM device for playback
 	deviceName := C.CString(a.config.OutputDevice)
 	defer C.free(unsafe.Pointer(deviceName))
 
 	ret := C.snd_pcm_open(&a.outputHandle, deviceName, C.SND_PCM_STREAM_PLAYBACK, 0)
 	if ret < 0 {
-		return fmt.Errorf("unable to open output device %s: %s",
-			a.config.OutputDevice, C.GoString(C.alsa_strerror_wrapper(ret)))
+		alsaError := C.GoString(C.alsa_strerror_wrapper(ret))
+		log.Printf("ALSA: Failed to open output device %s: %s (error code: %d)",
+			a.config.OutputDevice, alsaError, int(ret))
+		return fmt.Errorf("unable to open output device %s: %s (error code: %d)",
+			a.config.OutputDevice, alsaError, int(ret))
 	}
 
 	// Configure hardware parameters
 	if err := a.configureHardwareParams(a.outputHandle, "output"); err != nil {
+		log.Printf("ALSA: Hardware parameter configuration failed for output device, closing handle")
 		C.snd_pcm_close(a.outputHandle)
+		a.outputHandle = nil
 		return err
 	}
 
@@ -419,4 +442,56 @@ func (a *ALSAAudio) IsRecording() bool {
 // IsPlaying returns whether audio output is active
 func (a *ALSAAudio) IsPlaying() bool {
 	return a.isPlaying()
+}
+
+// validateDeviceExists checks if an ALSA device exists and is accessible
+func (a *ALSAAudio) validateDeviceExists(deviceName, deviceType string) error {
+	// Handle special device names
+	if deviceName == "default" || deviceName == "null" {
+		return nil // These are always valid
+	}
+
+	// Parse ALSA device names like "hw:0,0" or "plughw:0,0"
+	if strings.HasPrefix(deviceName, "hw:") || strings.HasPrefix(deviceName, "plughw:") {
+		devicePart := strings.TrimPrefix(strings.TrimPrefix(deviceName, "plughw:"), "hw:")
+		parts := strings.Split(devicePart, ",")
+		if len(parts) >= 1 {
+			cardNum := parts[0]
+
+			// Check if the ALSA card directory exists
+			cardPath := fmt.Sprintf("/proc/asound/card%s", cardNum)
+			if _, err := os.Stat(cardPath); err != nil {
+				return fmt.Errorf("ALSA card %s not found in /proc/asound/", cardNum)
+			}
+
+			// Check if device control node exists
+			controlPath := fmt.Sprintf("/dev/snd/controlC%s", cardNum)
+			if _, err := os.Stat(controlPath); err != nil {
+				return fmt.Errorf("ALSA control device %s not accessible", controlPath)
+			}
+
+			// For specific device numbers, check if PCM device exists
+			if len(parts) >= 2 {
+				deviceNum := parts[1]
+				var pcmPath string
+				if deviceType == "input" {
+					pcmPath = fmt.Sprintf("/dev/snd/pcmC%sD%sc", cardNum, deviceNum)
+				} else {
+					pcmPath = fmt.Sprintf("/dev/snd/pcmC%sD%sp", cardNum, deviceNum)
+				}
+
+				if _, err := os.Stat(pcmPath); err != nil {
+					log.Printf("ALSA: Warning - PCM device %s not found, but will attempt to open anyway", pcmPath)
+					// Don't fail here as some devices may not have separate device nodes
+				}
+			}
+
+			log.Printf("ALSA: Device validation passed for %s (%s)", deviceName, deviceType)
+			return nil
+		}
+	}
+
+	// For other device names (like "pulse", custom names), log but don't fail
+	log.Printf("ALSA: Cannot validate non-standard device name '%s', will attempt to open", deviceName)
+	return nil
 }

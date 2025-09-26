@@ -1,10 +1,21 @@
 package hardware
 
+
 /*
 #cgo pkg-config: hamlib
 #include <hamlib/rig.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+
+// Simple wrapper to set hamlib debug level via environment variable
+static void try_set_hamlib_debug(int level) {
+    char level_str[16];
+    snprintf(level_str, sizeof(level_str), "%d", level);
+    setenv("HAMLIB_DEBUG_LEVEL", level_str, 1);
+}
 
 // Helper function to set device path using rig_set_conf (JS8Call approach)
 static int set_device_path(RIG *rig, const char *device_path) {
@@ -77,10 +88,11 @@ import "C"
 
 import (
 	"fmt"
-	"log"
 	"strconv"
 	"sync"
 	"unsafe"
+
+	"github.com/dougsko/js8d/pkg/verbose"
 )
 
 // HamlibRadio implements RadioInterface using Hamlib
@@ -96,6 +108,13 @@ type HamlibRadio struct {
 
 // NewHamlibRadio creates a new Hamlib radio interface
 func NewHamlibRadio(config RadioConfig) *HamlibRadio {
+	// Set hamlib debug level immediately when creating radio instance
+	if verbose.IsEnabled() {
+		C.try_set_hamlib_debug(3) // RIG_DEBUG_VERBOSE
+	} else {
+		C.try_set_hamlib_debug(0) // RIG_DEBUG_NONE - suppress all hamlib output
+	}
+
 	return &HamlibRadio{
 		config: config,
 	}
@@ -106,10 +125,18 @@ func (r *HamlibRadio) Initialize() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	log.Printf("Hamlib: Initializing radio control...")
-	log.Printf("Hamlib: Model: %s", r.config.Model)
-	log.Printf("Hamlib: Device: %s", r.config.Device)
-	log.Printf("Hamlib: Baud Rate: %d", r.config.BaudRate)
+	// Set hamlib debug level using multiple approaches
+	if verbose.IsEnabled() {
+		C.try_set_hamlib_debug(3) // RIG_DEBUG_VERBOSE
+		verbose.Printf("Hamlib: Verbose debugging enabled")
+	} else {
+		C.try_set_hamlib_debug(0) // RIG_DEBUG_NONE - suppress all hamlib output
+	}
+
+	verbose.Printf("Hamlib: Initializing radio control...")
+	verbose.Printf("Hamlib: Model: %s", r.config.Model)
+	verbose.Printf("Hamlib: Device: %s", r.config.Device)
+	verbose.Printf("Hamlib: Baud Rate: %d", r.config.BaudRate)
 
 	// Parse model ID (can be numeric or string)
 	var modelID C.rig_model_t
@@ -119,7 +146,7 @@ func (r *HamlibRadio) Initialize() error {
 	} else {
 		// Try to find model by name
 		// For now, default to a common model if string provided
-		log.Printf("Hamlib: Model name provided, using auto-detection")
+		verbose.Printf("Hamlib: Model name provided, using auto-detection")
 		modelID = C.RIG_MODEL_DUMMY // Will be replaced with proper name lookup
 	}
 
@@ -136,14 +163,14 @@ func (r *HamlibRadio) Initialize() error {
 		devicePath := C.CString(r.config.Device)
 		defer C.free(unsafe.Pointer(devicePath))
 
-		log.Printf("Hamlib: Setting device to %s", r.config.Device)
+		verbose.Printf("Hamlib: Setting device to %s", r.config.Device)
 
 		// Set the device path using rig_set_conf (JS8Call approach)
 		ret := C.set_device_path(r.rig, devicePath)
 		if ret != C.RIG_OK {
-			log.Printf("Hamlib: Warning - failed to set device path (%s), may use default", C.GoString(C.rigerror(ret)))
+			verbose.Printf("Hamlib: Warning - failed to set device path (%s), may use default", C.GoString(C.rigerror(ret)))
 		} else {
-			log.Printf("Hamlib: Device path set successfully")
+			verbose.Printf("Hamlib: Device path set successfully")
 		}
 	}
 
@@ -152,14 +179,14 @@ func (r *HamlibRadio) Initialize() error {
 		baudStr := C.CString(fmt.Sprintf("%d", r.config.BaudRate))
 		defer C.free(unsafe.Pointer(baudStr))
 
-		log.Printf("Hamlib: Setting baud rate to %d", r.config.BaudRate)
+		verbose.Printf("Hamlib: Setting baud rate to %d", r.config.BaudRate)
 
 		// Set the baud rate using rig_set_conf (JS8Call approach)
 		ret := C.set_baud_rate(r.rig, baudStr)
 		if ret != C.RIG_OK {
-			log.Printf("Hamlib: Warning - failed to set baud rate (%s), using default", C.GoString(C.rigerror(ret)))
+			verbose.Printf("Hamlib: Warning - failed to set baud rate (%s), using default", C.GoString(C.rigerror(ret)))
 		} else {
-			log.Printf("Hamlib: Baud rate set successfully")
+			verbose.Printf("Hamlib: Baud rate set successfully")
 		}
 	}
 
@@ -171,13 +198,14 @@ func (r *HamlibRadio) Initialize() error {
 	}
 
 	r.connected = true
-	log.Printf("Hamlib: Radio connection established successfully")
+	verbose.Printf("Hamlib: Radio connection established successfully")
 
 	// Get radio info for verification
 	if info, err := r.getRadioInfoLocked(); err == nil {
-		log.Printf("Hamlib: Connected to %s %s (version %s)",
+		verbose.Printf("Hamlib: Connected to %s %s (version %s)",
 			info.Manufacturer, info.Model, info.Version)
 	}
+
 
 	return nil
 }
@@ -191,7 +219,7 @@ func (r *HamlibRadio) Close() error {
 		return nil
 	}
 
-	log.Printf("Hamlib: Closing radio connection...")
+	verbose.Printf("Hamlib: Closing radio connection...")
 
 	if r.rig != nil {
 		C.rig_close(r.rig)
@@ -200,7 +228,7 @@ func (r *HamlibRadio) Close() error {
 	}
 
 	r.connected = false
-	log.Printf("Hamlib: Radio connection closed")
+	verbose.Printf("Hamlib: Radio connection closed")
 	return nil
 }
 
@@ -213,7 +241,7 @@ func (r *HamlibRadio) SetFrequency(freq int64) error {
 		return fmt.Errorf("radio not connected")
 	}
 
-	log.Printf("Hamlib: Setting frequency to %d Hz (%.3f MHz)", freq, float64(freq)/1000000.0)
+	verbose.Printf("Hamlib: Setting frequency to %d Hz (%.3f MHz)", freq, float64(freq)/1000000.0)
 
 	ret := C.rig_set_freq(r.rig, C.RIG_VFO_CURR, C.freq_t(freq))
 	if ret != C.RIG_OK {
@@ -250,7 +278,7 @@ func (r *HamlibRadio) SetMode(mode string, bandwidth int) error {
 		return fmt.Errorf("radio not connected")
 	}
 
-	log.Printf("Hamlib: Setting mode to %s with bandwidth %d Hz", mode, bandwidth)
+	verbose.Printf("Hamlib: Setting mode to %s with bandwidth %d Hz", mode, bandwidth)
 
 	modeStr := C.CString(mode)
 	defer C.free(unsafe.Pointer(modeStr))
@@ -298,10 +326,10 @@ func (r *HamlibRadio) SetPTT(state bool) error {
 	var ptt C.ptt_t
 	if state {
 		ptt = C.RIG_PTT_ON
-		log.Printf("Hamlib: PTT ON")
+		verbose.Printf("Hamlib: PTT ON")
 	} else {
 		ptt = C.RIG_PTT_OFF
-		log.Printf("Hamlib: PTT OFF")
+		verbose.Printf("Hamlib: PTT OFF")
 	}
 
 	ret := C.rig_set_ptt(r.rig, C.RIG_VFO_CURR, ptt)
@@ -375,7 +403,7 @@ func (r *HamlibRadio) GetPowerLevel() (float32, error) {
 
 	// For now, return a mock value since hamlib API has changed
 	// This would need to be updated for specific hamlib version compatibility
-	log.Printf("Hamlib: GetPowerLevel called (returning mock value)")
+	verbose.Printf("Hamlib: GetPowerLevel called (returning mock value)")
 	return 0.5, nil // 50% power
 }
 
@@ -389,7 +417,7 @@ func (r *HamlibRadio) GetSWRLevel() (float32, error) {
 	}
 
 	// For now, return a mock value since hamlib API has changed
-	log.Printf("Hamlib: GetSWRLevel called (returning mock value)")
+	verbose.Printf("Hamlib: GetSWRLevel called (returning mock value)")
 	return 1.2, nil // 1.2:1 SWR
 }
 
@@ -403,7 +431,7 @@ func (r *HamlibRadio) GetSignalLevel() (int, error) {
 	}
 
 	// For now, return a mock value since hamlib API has changed
-	log.Printf("Hamlib: GetSignalLevel called (returning mock value)")
+	verbose.Printf("Hamlib: GetSignalLevel called (returning mock value)")
 	return -73, nil // -73 dBm signal level
 }
 

@@ -48,6 +48,218 @@ class JS8DClient {
         document.getElementById('frequency').addEventListener('change', (e) => {
             this.setFrequency(parseInt(e.target.value));
         });
+
+        // Spectrum display toggle
+        document.getElementById('toggle-spectrum').addEventListener('click', () => {
+            this.toggleSpectrum();
+        });
+
+        // Initialize spectrum display
+        this.initSpectrumDisplay();
+    }
+
+    initSpectrumDisplay() {
+        this.spectrumActive = false;
+        this.spectrumWebSocket = null;
+        this.spectrumCanvas = document.getElementById('main-spectrum-canvas');
+        this.waterfallCanvas = document.getElementById('main-waterfall-canvas');
+        this.spectrumCtx = this.spectrumCanvas?.getContext('2d');
+        this.waterfallCtx = this.waterfallCanvas?.getContext('2d');
+
+        // Waterfall history buffer
+        this.waterfallHistory = [];
+        this.maxWaterfallLines = 100;
+
+        // Transmission progress tracking
+        this.transmissionProgress = {
+            active: false,
+            startTime: 0,
+            estimatedDuration: 0,
+            messageLength: 0
+        };
+    }
+
+    toggleSpectrum() {
+        const button = document.getElementById('toggle-spectrum');
+        if (this.spectrumActive) {
+            this.stopSpectrum();
+            button.textContent = 'Start Display';
+            button.classList.remove('active');
+        } else {
+            this.startSpectrum();
+            button.textContent = 'Stop Display';
+            button.classList.add('active');
+        }
+    }
+
+    startSpectrum() {
+        if (this.spectrumActive) return;
+
+        this.spectrumActive = true;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/audio`;
+
+        this.spectrumWebSocket = new WebSocket(wsUrl);
+
+        this.spectrumWebSocket.onopen = () => {
+            console.log('Spectrum WebSocket connected');
+        };
+
+        this.spectrumWebSocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            this.updateSpectrum(data);
+        };
+
+        this.spectrumWebSocket.onclose = () => {
+            console.log('Spectrum WebSocket closed');
+            this.spectrumActive = false;
+            const button = document.getElementById('toggle-spectrum');
+            button.textContent = 'Start Display';
+            button.classList.remove('active');
+        };
+
+        this.spectrumWebSocket.onerror = (error) => {
+            console.error('Spectrum WebSocket error:', error);
+        };
+    }
+
+    stopSpectrum() {
+        if (!this.spectrumActive) return;
+
+        this.spectrumActive = false;
+        if (this.spectrumWebSocket) {
+            this.spectrumWebSocket.close();
+            this.spectrumWebSocket = null;
+        }
+    }
+
+    updateSpectrum(data) {
+        if (!this.spectrumCtx || !this.waterfallCtx) return;
+
+        // Update spectrum display
+        this.drawSpectrum(data.spectrum);
+
+        // Update waterfall display
+        if (document.getElementById('waterfall-enabled').checked) {
+            this.drawWaterfall(data.spectrum);
+        }
+    }
+
+    drawSpectrum(spectrumData) {
+        const canvas = this.spectrumCanvas;
+        const ctx = this.spectrumCtx;
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // Clear canvas
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, width, height);
+
+        if (!spectrumData || !spectrumData.bins || spectrumData.bins.length === 0) {
+            return;
+        }
+
+        // Draw spectrum
+        ctx.strokeStyle = '#4CAF50';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+
+        const binWidth = width / spectrumData.bins.length;
+        for (let i = 0; i < spectrumData.bins.length; i++) {
+            const x = i * binWidth;
+            const magnitude = Math.max(0, Math.min(1, spectrumData.bins[i]));
+            const y = height - (magnitude * height);
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.stroke();
+
+        // Draw frequency grid lines
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 0.5;
+        for (let i = 1; i < 10; i++) {
+            const x = (width / 10) * i;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, height);
+            ctx.stroke();
+        }
+
+        // Draw JS8 frequency markers (centered around 1500 Hz)
+        ctx.strokeStyle = '#FF9800';
+        ctx.lineWidth = 2;
+        const js8Center = width / 2; // Assuming 1500 Hz is center
+        ctx.beginPath();
+        ctx.moveTo(js8Center, 0);
+        ctx.lineTo(js8Center, height);
+        ctx.stroke();
+    }
+
+    drawWaterfall(spectrumData) {
+        const canvas = this.waterfallCanvas;
+        const ctx = this.waterfallCtx;
+        const width = canvas.width;
+        const height = canvas.height;
+
+        if (!spectrumData || !spectrumData.bins || spectrumData.bins.length === 0) {
+            return;
+        }
+
+        // Shift existing waterfall data down
+        if (this.waterfallHistory.length >= this.maxWaterfallLines) {
+            this.waterfallHistory.shift();
+        }
+        this.waterfallHistory.push(spectrumData.bins);
+
+        // Clear canvas
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw waterfall
+        const lineHeight = height / this.maxWaterfallLines;
+        for (let y = 0; y < this.waterfallHistory.length; y++) {
+            const line = this.waterfallHistory[y];
+            const imageData = ctx.createImageData(width, Math.ceil(lineHeight));
+
+            for (let x = 0; x < width; x++) {
+                const binIndex = Math.floor((x / width) * line.length);
+                const magnitude = Math.max(0, Math.min(1, line[binIndex] || 0));
+
+                // Convert magnitude to color (blue -> green -> yellow -> red)
+                let r, g, b;
+                if (magnitude < 0.25) {
+                    r = 0;
+                    g = 0;
+                    b = Math.floor(magnitude * 4 * 255);
+                } else if (magnitude < 0.5) {
+                    r = 0;
+                    g = Math.floor((magnitude - 0.25) * 4 * 255);
+                    b = 255;
+                } else if (magnitude < 0.75) {
+                    r = Math.floor((magnitude - 0.5) * 4 * 255);
+                    g = 255;
+                    b = 255 - Math.floor((magnitude - 0.5) * 4 * 255);
+                } else {
+                    r = 255;
+                    g = 255 - Math.floor((magnitude - 0.75) * 4 * 255);
+                    b = 0;
+                }
+
+                for (let py = 0; py < Math.ceil(lineHeight); py++) {
+                    const pixelIndex = (py * width + x) * 4;
+                    imageData.data[pixelIndex] = r;     // R
+                    imageData.data[pixelIndex + 1] = g; // G
+                    imageData.data[pixelIndex + 2] = b; // B
+                    imageData.data[pixelIndex + 3] = 255; // A
+                }
+            }
+
+            ctx.putImageData(imageData, 0, y * lineHeight);
+        }
     }
 
     startPolling() {
@@ -199,6 +411,9 @@ class JS8DClient {
             return;
         }
 
+        // Start transmission progress tracking
+        this.startTransmissionProgress(messageText);
+
         try {
             const response = await fetch('/api/v1/messages', {
                 method: 'POST',
@@ -229,10 +444,12 @@ class JS8DClient {
             } else {
                 const error = await response.json();
                 alert(`Failed to send message: ${error.error}`);
+                this.endTransmissionProgress();
             }
         } catch (error) {
             console.error('Failed to send message:', error);
             alert('Failed to send message. Check connection.');
+            this.endTransmissionProgress();
         }
     }
 
@@ -335,6 +552,77 @@ class JS8DClient {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    startTransmissionProgress(messageText) {
+        // Estimate transmission duration (JS8 Normal: ~1.6 seconds per character)
+        const estimatedDuration = Math.max(5000, messageText.length * 1600); // Minimum 5 seconds
+
+        this.transmissionProgress.active = true;
+        this.transmissionProgress.startTime = Date.now();
+        this.transmissionProgress.estimatedDuration = estimatedDuration;
+        this.transmissionProgress.messageLength = messageText.length;
+
+        const progressBar = document.getElementById('tx-progress-fill');
+        const progressText = document.getElementById('tx-progress-text');
+
+        progressBar.classList.add('transmitting');
+        progressText.textContent = 'Queued';
+
+        // Update progress periodically
+        this.progressInterval = setInterval(() => {
+            this.updateTransmissionProgress();
+        }, 100);
+
+        // Auto-end after estimated duration + buffer
+        this.progressTimeout = setTimeout(() => {
+            this.endTransmissionProgress();
+        }, estimatedDuration + 5000);
+    }
+
+    updateTransmissionProgress() {
+        if (!this.transmissionProgress.active) return;
+
+        const elapsed = Date.now() - this.transmissionProgress.startTime;
+        const progress = Math.min(100, (elapsed / this.transmissionProgress.estimatedDuration) * 100);
+
+        const progressBar = document.getElementById('tx-progress-fill');
+        const progressText = document.getElementById('tx-progress-text');
+
+        progressBar.style.width = `${progress}%`;
+
+        if (elapsed < 2000) {
+            progressText.textContent = 'Queued';
+        } else if (elapsed < 4000) {
+            progressText.textContent = 'Starting';
+        } else if (progress < 90) {
+            progressText.textContent = `TX ${Math.round(progress)}%`;
+        } else {
+            progressText.textContent = 'Finishing';
+        }
+    }
+
+    endTransmissionProgress() {
+        if (!this.transmissionProgress.active) return;
+
+        this.transmissionProgress.active = false;
+
+        const progressBar = document.getElementById('tx-progress-fill');
+        const progressText = document.getElementById('tx-progress-text');
+
+        progressBar.classList.remove('transmitting');
+        progressBar.style.width = '0%';
+        progressText.textContent = 'Ready';
+
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+            this.progressInterval = null;
+        }
+
+        if (this.progressTimeout) {
+            clearTimeout(this.progressTimeout);
+            this.progressTimeout = null;
+        }
     }
 }
 

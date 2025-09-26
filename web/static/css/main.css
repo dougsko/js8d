@@ -351,3 +351,154 @@ button:disabled {
         font-size: 16px; /* Better for mobile touch */
     }
 }
+
+/* Spectrum Display Styles */
+.spectrum-panel {
+    background: #2d2d2d;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid #444;
+}
+
+.spectrum-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.spectrum-header h3 {
+    color: #4CAF50;
+    margin: 0;
+    font-size: 1.2em;
+}
+
+.spectrum-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.spectrum-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.3s;
+}
+
+.spectrum-btn:hover {
+    background: #388E3C;
+}
+
+.spectrum-btn.active {
+    background: #FF5722;
+}
+
+.spectrum-btn.active:hover {
+    background: #D84315;
+}
+
+.spectrum-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #ccc;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.spectrum-label input[type="checkbox"] {
+    margin: 0;
+}
+
+.spectrum-display {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+}
+
+#main-spectrum-canvas, #main-waterfall-canvas {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    max-width: 100%;
+    height: auto;
+}
+
+/* Transmission Progress Styles */
+.tx-progress-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+}
+
+.tx-progress-bar {
+    flex: 1;
+    height: 20px;
+    background: #333;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid #555;
+    position: relative;
+}
+
+.tx-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50 0%, #2196F3 100%);
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: inherit;
+}
+
+.tx-progress-fill.transmitting {
+    background: linear-gradient(90deg, #FF9800 0%, #FF5722 100%);
+    animation: progress-pulse 1s ease-in-out infinite;
+}
+
+.tx-progress-text {
+    font-size: 12px;
+    color: #ccc;
+    min-width: 60px;
+    text-align: right;
+}
+
+@keyframes progress-pulse {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+}
+
+/* Mobile adjustments for spectrum */
+@media (max-width: 768px) {
+    .spectrum-controls {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .spectrum-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    #main-spectrum-canvas, #main-waterfall-canvas {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .tx-progress-container {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    .tx-progress-text {
+        text-align: center;
+    }
+}

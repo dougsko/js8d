@@ -62,6 +62,22 @@
                 </div>
             </section>
 
+            <section class="spectrum-panel">
+                <div class="spectrum-header">
+                    <h3>Audio Spectrum</h3>
+                    <div class="spectrum-controls">
+                        <button id="toggle-spectrum" type="button" class="spectrum-btn">Start Display</button>
+                        <label class="spectrum-label">
+                            <input type="checkbox" id="waterfall-enabled" checked> Waterfall
+                        </label>
+                    </div>
+                </div>
+                <div class="spectrum-display">
+                    <canvas id="main-spectrum-canvas" width="600" height="120"></canvas>
+                    <canvas id="main-waterfall-canvas" width="600" height="100"></canvas>
+                </div>
+            </section>
+
             <section class="status-panel">
                 <div class="status-info">
                     <div class="status-item">
@@ -71,6 +87,15 @@
                     <div class="status-item">
                         <label>SNR:</label>
                         <span id="snr-display">--dB</span>
+                    </div>
+                    <div class="status-item">
+                        <label>TX Progress:</label>
+                        <div class="tx-progress-container">
+                            <div id="tx-progress-bar" class="tx-progress-bar">
+                                <div id="tx-progress-fill" class="tx-progress-fill"></div>
+                            </div>
+                            <span id="tx-progress-text" class="tx-progress-text">Ready</span>
+                        </div>
                     </div>
                     <div class="status-item">
                         <label>Mode:</label>

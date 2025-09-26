@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  js8d:
+    build: .
+    container_name: js8d
+    restart: unless-stopped
+
+    # Port mapping
+    ports:
+      - "8080:8080"
+
+    # Volume mounts
+    volumes:
+      # Configuration
+      - ./configs/config.docker.yaml:/etc/js8d/config.yaml:ro
+
+      # Data persistence
+      - js8d_data:/var/lib/js8d
+      - js8d_logs:/var/log/js8d
+
+      # Audio device access (if needed)
+      # - /dev/snd:/dev/snd:ro
+
+    # Device access for audio and radio
+    devices:
+      # Audio devices (uncomment if needed)
+      # - /dev/snd:/dev/snd
+
+      # Serial devices for radio control (adjust as needed)
+      # - /dev/ttyUSB0:/dev/ttyUSB0
+      # - /dev/ttyACM0:/dev/ttyACM0
+
+    # Environment variables
+    environment:
+      - TZ=UTC
+      - JS8D_CONFIG_DIR=/etc/js8d
+      - JS8D_DATA_DIR=/var/lib/js8d
+      - JS8D_LOG_DIR=/var/log/js8d
+      - JS8D_RUN_DIR=/run/js8d
+
+    # Network mode (host mode for audio device access)
+    # Uncomment if you need direct hardware access
+    # network_mode: host
+
+    # Privileged mode (only if needed for hardware access)
+    # privileged: true
+
+    # Group additions for hardware access
+    # group_add:
+    #   - audio
+    #   - dialout
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  js8d_data:
+    driver: local
+  js8d_logs:
+    driver: local
+
+# Example development override
+# Create docker-compose.override.yml for development settings

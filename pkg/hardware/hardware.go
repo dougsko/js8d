@@ -377,3 +377,12 @@ func (h *HardwareManager) GetAudio() AudioInterface {
 	defer h.mutex.RUnlock()
 	return h.audio
 }
+
+// PlatformAudioConfig represents cross-platform audio configuration
+type PlatformAudioConfig struct {
+	InputDevice  string
+	OutputDevice string
+	SampleRate   int
+	BufferSize   int
+	Channels     int
+}

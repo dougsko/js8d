@@ -1,4 +1,4 @@
-// +build linux
+//go:build linux
 
 package hardware
 
@@ -22,14 +22,6 @@ static const char* alsa_strerror_wrapper(int err) {
 */
 import "C"
 
-// ALSAAudioConfig represents ALSA audio configuration
-type ALSAAudioConfig struct {
-	InputDevice  string
-	OutputDevice string
-	SampleRate   int
-	BufferSize   int
-	Channels     int
-}
 
 // ALSAAudio implements real ALSA audio I/O
 type ALSAAudio struct {
@@ -50,6 +42,19 @@ type ALSAAudio struct {
 
 	// Worker control
 	stopChan chan struct{}
+}
+
+// Override the fallback function with real ALSA implementation
+func init() {
+	tryCreateALSAAudio = func(config ALSAAudioConfig) AudioInterface {
+		audio := NewALSAAudio(config)
+		// Test if ALSA is actually available by trying to initialize
+		if err := audio.Initialize(); err != nil {
+			audio.Close()
+			return nil
+		}
+		return audio
+	}
 }
 
 // NewALSAAudio creates a new ALSA audio interface

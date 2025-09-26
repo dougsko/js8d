@@ -1,4 +1,4 @@
-// +build linux
+//go:build linux
 
 package hardware
 
@@ -11,14 +11,20 @@ func NewPlatformAudio(config PlatformAudioConfig) AudioInterface {
 		BufferSize:   config.BufferSize,
 		Channels:     config.Channels,
 	}
-	return NewALSAAudio(alsaConfig)
+
+	// Try to create ALSA audio, fall back to mock if ALSA not available
+	if audio := tryCreateALSAAudio(alsaConfig); audio != nil {
+		return audio
+	}
+
+	// Fallback to mock audio if ALSA is not available
+	mockConfig := MockAudioConfig{
+		InputDevice:  config.InputDevice,
+		OutputDevice: config.OutputDevice,
+		SampleRate:   config.SampleRate,
+		BufferSize:   config.BufferSize,
+		Channels:     config.Channels,
+	}
+	return NewMockAudio(mockConfig)
 }
 
-// PlatformAudioConfig represents cross-platform audio configuration
-type PlatformAudioConfig struct {
-	InputDevice  string
-	OutputDevice string
-	SampleRate   int
-	BufferSize   int
-	Channels     int
-}

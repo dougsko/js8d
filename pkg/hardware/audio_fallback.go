@@ -1,4 +1,4 @@
-// +build !darwin,!linux
+//go:build !darwin && !linux
 
 package hardware
 
@@ -14,11 +14,3 @@ func NewPlatformAudio(config PlatformAudioConfig) AudioInterface {
 	return NewMockAudio(mockConfig)
 }
 
-// PlatformAudioConfig represents cross-platform audio configuration
-type PlatformAudioConfig struct {
-	InputDevice  string
-	OutputDevice string
-	SampleRate   int
-	BufferSize   int
-	Channels     int
-}

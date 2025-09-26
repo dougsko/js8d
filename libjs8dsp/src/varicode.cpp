@@ -1,6 +1,6 @@
 /**
  * Varicode Encoder/Decoder - Extracted from JS8Call
- * Simplified C++ implementation without Qt dependencies
+ * Real C++ implementation without Qt dependencies
  *
  * Original: (C) 2018 Jordan Sherer <kn4crd@gmail.com>
  * Extraction: js8d project
@@ -24,16 +24,58 @@ private:
     std::unordered_map<std::string, char> decode_map_;
 
     void initialize_maps() {
-        // TODO: Initialize the actual JS8 varicode mapping tables
-        // This is a complex mapping that needs to be extracted from the original
+        // Actual Huffman varicode table extracted from JS8Call
+        const std::pair<char, const char*> huffman_table[] = {
+            {' ', "01"},           // Space - most common
+            {'E', "100"},          // E - most common letter
+            {'T', "1101"},
+            {'A', "0011"},
+            {'O', "11111"},
+            {'I', "11100"},
+            {'N', "10111"},
+            {'S', "10100"},
+            {'H', "00011"},
+            {'R', "00000"},
+            {'D', "111011"},
+            {'L', "110011"},
+            {'C', "110001"},
+            {'U', "101101"},
+            {'M', "101011"},
+            {'W', "001011"},
+            {'F', "001001"},
+            {'G', "000101"},
+            {'Y', "000011"},
+            {'P', "1111011"},
+            {'B', "1111001"},
+            {'.', "1110100"},
+            {'V', "1100101"},
+            {'K', "1100100"},
+            {'-', "1100001"},
+            {'+', "1100000"},
+            {'?', "1011001"},
+            {'!', "1011000"},
+            {'"', "1010101"},
+            {'X', "1010100"},
+            {'0', "0010101"},
+            {'J', "0010100"},
+            {'1', "0010001"},
+            {'Q', "0010000"},
+            {'2', "0001001"},
+            {'Z', "0001000"},
+            {'3', "0000101"},
+            {'5', "0000100"},
+            {'4', "11110101"},
+            {'9', "11110100"},
+            {'8', "11110001"},
+            {'6', "11110000"},
+            {'7', "11101011"},
+            {'/', "11101010"}
+        };
 
-        // For now, simple placeholder mapping
-        const char* chars = js8_alphabet;
-        for (int i = 0; chars[i]; i++) {
-            char c = chars[i];
-            std::string code = std::to_string(i); // Placeholder - not actual varicode
-            encode_map_[c] = code;
-            decode_map_[code] = c;
+        // Build encode and decode maps
+        for (const auto& entry : huffman_table) {
+            encode_map_[entry.first] = entry.second;
+            decode_map_[entry.second] = entry.first;
         }
     }
 
@@ -51,7 +93,10 @@ public:
             auto it = encode_map_.find(c);
             if (it != encode_map_.end()) {
                 encoded += it->second;
-                encoded += " "; // Separator (placeholder)
+                // In real varicode, there's no separator - codes are prefix-free
+            } else {
+                // Handle unknown characters - could skip or use default
+                // For now, skip unknown characters
             }
         }
         return encoded;
@@ -60,10 +105,30 @@ public:
     std::string decode_symbols(const char* symbols) {
         if (!symbols) return "";
 
-        // TODO: Implement actual varicode decoding
-        // This involves parsing the bit stream and converting back to text
+        std::string decoded;
+        std::string current_code;
 
-        return std::string(symbols); // Placeholder
+        // Parse bit stream using prefix-free property
+        for (const char* p = symbols; *p; p++) {
+            if (*p == '0' || *p == '1') {
+                current_code += *p;
+
+                // Check if current code matches any character
+                auto it = decode_map_.find(current_code);
+                if (it != decode_map_.end()) {
+                    decoded += it->second;
+                    current_code.clear();
+                }
+                // If code gets too long without match, it might be corrupted
+                else if (current_code.length() > 10) {
+                    // Skip this bit and try to resync
+                    current_code.erase(0, 1);
+                }
+            }
+            // Skip non-binary characters
+        }
+
+        return decoded;
     }
 
     bool is_valid_message(const char* message) {

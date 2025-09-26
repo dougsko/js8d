@@ -37,6 +37,20 @@ int main() {
     if (encode_result > 0) {
         printf("✓ Message encoded successfully (%d bytes)\n", encode_result);
         printf("Encoded: %s\n", encoded);
+
+        // Test decoding the same message
+        char decoded[256];
+        int decode_result = varicode_decode_symbols(encoder, encoded, decoded, sizeof(decoded));
+        if (decode_result > 0) {
+            printf("✓ Message decoded successfully: '%s'\n", decoded);
+            if (strcmp(decoded, test_message) == 0) {
+                printf("✓ Round-trip encoding/decoding successful!\n");
+            } else {
+                printf("⚠ Decoded message differs from original\n");
+            }
+        } else {
+            printf("ERROR: Failed to decode message\n");
+        }
     } else {
         printf("ERROR: Failed to encode message\n");
     }

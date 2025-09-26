@@ -504,6 +504,14 @@ func (a *ALSAAudio) validateDeviceExists(deviceName, deviceType string) error {
 	return nil
 }
 
+// AudioDevice represents an audio device
+type AudioDevice struct {
+	ID       uint32 `json:"id"`
+	Name     string `json:"name"`
+	IsInput  bool   `json:"is_input"`
+	IsOutput bool   `json:"is_output"`
+}
+
 // GetAudioDevices returns a list of available ALSA audio devices
 func GetAudioDevices() ([]AudioDevice, error) {
 	devices := []AudioDevice{}

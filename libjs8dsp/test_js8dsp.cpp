@@ -23,7 +23,7 @@ int main() {
 
     // Test encoding
     printf("\nTesting encoding...\n");
-    const char* test_message = "CQ TEST DE N0CALL";
+    const char* test_message = "CQ-N0CALL-XX";  // Exactly 12 characters, no spaces
     int16_t audio_buffer[JS8DSP_BUFFER_SIZE];
 
     int samples = js8dsp_encode_message(test_message, JS8DSP_MODE_NORMAL,

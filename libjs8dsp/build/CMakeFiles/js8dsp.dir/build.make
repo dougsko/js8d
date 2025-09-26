@@ -83,17 +83,33 @@ CMakeFiles/js8dsp.dir/js8dsp.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/js8dsp.dir/js8dsp.cpp.s"
 	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/doug/bin/js8d/libjs8dsp/js8dsp.cpp -o CMakeFiles/js8dsp.dir/js8dsp.cpp.s
 
+CMakeFiles/js8dsp.dir/js8_encoder.cpp.o: CMakeFiles/js8dsp.dir/flags.make
+CMakeFiles/js8dsp.dir/js8_encoder.cpp.o: /Users/doug/bin/js8d/libjs8dsp/js8_encoder.cpp
+CMakeFiles/js8dsp.dir/js8_encoder.cpp.o: CMakeFiles/js8dsp.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/Users/doug/bin/js8d/libjs8dsp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/js8dsp.dir/js8_encoder.cpp.o"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/js8dsp.dir/js8_encoder.cpp.o -MF CMakeFiles/js8dsp.dir/js8_encoder.cpp.o.d -o CMakeFiles/js8dsp.dir/js8_encoder.cpp.o -c /Users/doug/bin/js8d/libjs8dsp/js8_encoder.cpp
+
+CMakeFiles/js8dsp.dir/js8_encoder.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/js8dsp.dir/js8_encoder.cpp.i"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/doug/bin/js8d/libjs8dsp/js8_encoder.cpp > CMakeFiles/js8dsp.dir/js8_encoder.cpp.i
+
+CMakeFiles/js8dsp.dir/js8_encoder.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/js8dsp.dir/js8_encoder.cpp.s"
+	/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/doug/bin/js8d/libjs8dsp/js8_encoder.cpp -o CMakeFiles/js8dsp.dir/js8_encoder.cpp.s
+
 # Object files for target js8dsp
 js8dsp_OBJECTS = \
-"CMakeFiles/js8dsp.dir/js8dsp.cpp.o"
+"CMakeFiles/js8dsp.dir/js8dsp.cpp.o" \
+"CMakeFiles/js8dsp.dir/js8_encoder.cpp.o"
 
 # External object files for target js8dsp
 js8dsp_EXTERNAL_OBJECTS =
 
 libjs8dsp.a: CMakeFiles/js8dsp.dir/js8dsp.cpp.o
+libjs8dsp.a: CMakeFiles/js8dsp.dir/js8_encoder.cpp.o
 libjs8dsp.a: CMakeFiles/js8dsp.dir/build.make
 libjs8dsp.a: CMakeFiles/js8dsp.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/doug/bin/js8d/libjs8dsp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libjs8dsp.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/Users/doug/bin/js8d/libjs8dsp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX static library libjs8dsp.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/js8dsp.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/js8dsp.dir/link.txt --verbose=$(VERBOSE)
 

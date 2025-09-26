@@ -1,4 +1,5 @@
 #include "js8dsp.h"
+#include "js8_encoder.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -63,7 +64,7 @@ int js8dsp_decode_buffer(const int16_t* audio_data,
     return 1; // Return 1 decoded message
 }
 
-// Simple stub implementation for encoding
+// Real JS8 encoding implementation
 int js8dsp_encode_message(const char* message,
                          js8dsp_mode_t mode,
                          int16_t* audio_out,
@@ -75,27 +76,53 @@ int js8dsp_encode_message(const char* message,
 
     clear_error();
 
-    // TODO: Implement actual JS8 encoding
-    // For now, generate a simple tone burst as placeholder
-
-    int frequency = 1500; // Hz
-    int sample_rate = 12000; // Hz
-    float duration = 15.0f; // seconds (JS8 Normal mode duration)
-    int samples_needed = (int)(duration * sample_rate);
-
-    if (samples_needed > max_samples) {
-        set_error("Output buffer too small");
+    // Validate message length
+    size_t msg_len = strlen(message);
+    if (msg_len > 12) {
+        set_error("Message too long (max 12 characters for JS8 Normal)");
         return -1;
     }
 
-    // Generate a simple sine wave tone
-    for (int i = 0; i < samples_needed; i++) {
-        float t = (float)i / sample_rate;
-        float amplitude = 16384.0f; // ~50% of int16_t range
-        audio_out[i] = (int16_t)(amplitude * sin(2.0f * M_PI * frequency * t));
+    // Pad message to exactly 12 characters with spaces
+    char padded_message[13];
+    snprintf(padded_message, sizeof(padded_message), "%-12.12s", message);
+
+    // Generate JS8 tone sequence
+    int tones[79];
+    int result = js8_encode_message(padded_message, 0, tones);
+    if (result < 0) {
+        set_error("Failed to encode JS8 message");
+        return -1;
     }
 
-    return samples_needed;
+    // Convert tones to audio samples
+    // JS8 Normal mode: 12000 Hz sample rate, ~15 second duration
+    const int sample_rate = 12000;
+    const float tone_duration = 15.0f / 79.0f; // ~0.19 seconds per tone
+    const int samples_per_tone = (int)(tone_duration * sample_rate);
+    const int total_samples = 79 * samples_per_tone;
+
+    if (total_samples > max_samples) {
+        set_error("Output buffer too small for JS8 message");
+        return -1;
+    }
+
+    // Generate FSK audio for each tone
+    const float base_freq = 1000.0f; // Base frequency in Hz
+    const float freq_spacing = 12000.0f / 2048.0f; // ~5.86 Hz tone spacing
+    const float amplitude = 16384.0f; // ~50% of int16_t range
+
+    int sample_idx = 0;
+    for (int tone_idx = 0; tone_idx < 79; tone_idx++) {
+        float freq = base_freq + (tones[tone_idx] * freq_spacing);
+
+        for (int i = 0; i < samples_per_tone && sample_idx < max_samples; i++) {
+            float t = (float)i / sample_rate;
+            audio_out[sample_idx++] = (int16_t)(amplitude * sin(2.0f * M_PI * freq * t));
+        }
+    }
+
+    return sample_idx;
 }
 
 // Get last error message

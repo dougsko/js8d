@@ -26,7 +26,7 @@ func TestEncodeMessage(t *testing.T) {
 		t.Fatalf("Failed to initialize DSP: %v", err)
 	}
 
-	message := "CQ TEST DE N0CALL"
+	message := "CQ-N0CALL-XX"
 	audioData, err := dsp.EncodeMessage(message, ModeNormal)
 	if err != nil {
 		t.Fatalf("Failed to encode message: %v", err)
@@ -55,7 +55,7 @@ func TestDecodeMessage(t *testing.T) {
 	}
 
 	// First encode a message
-	message := "CQ TEST DE N0CALL"
+	message := "CQ-N0CALL-XX"
 	audioData, err := dsp.EncodeMessage(message, ModeNormal)
 	if err != nil {
 		t.Fatalf("Failed to encode message: %v", err)
@@ -123,7 +123,7 @@ func TestConcurrentAccess(t *testing.T) {
 	go func() {
 		defer func() { done <- true }()
 		for i := 0; i < 5; i++ {
-			_, err := dsp.EncodeMessage("CQ TEST1", ModeNormal)
+			_, err := dsp.EncodeMessage("CQ-TEST1-XX", ModeNormal)
 			if err != nil {
 				t.Errorf("Concurrent encode 1 failed: %v", err)
 				return
@@ -135,7 +135,7 @@ func TestConcurrentAccess(t *testing.T) {
 	go func() {
 		defer func() { done <- true }()
 		for i := 0; i < 5; i++ {
-			_, err := dsp.EncodeMessage("CQ TEST2", ModeNormal)
+			_, err := dsp.EncodeMessage("CQ-TEST2-XX", ModeNormal)
 			if err != nil {
 				t.Errorf("Concurrent encode 2 failed: %v", err)
 				return

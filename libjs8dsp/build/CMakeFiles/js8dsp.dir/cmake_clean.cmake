@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/js8dsp.dir/js8_encoder.cpp.o"
+  "CMakeFiles/js8dsp.dir/js8_encoder.cpp.o.d"
   "CMakeFiles/js8dsp.dir/js8dsp.cpp.o"
   "CMakeFiles/js8dsp.dir/js8dsp.cpp.o.d"
   "libjs8dsp.a"

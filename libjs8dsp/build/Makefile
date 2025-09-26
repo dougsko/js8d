@@ -197,6 +197,30 @@ js8dsp_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/js8dsp_test.dir/build.make CMakeFiles/js8dsp_test.dir/build
 .PHONY : js8dsp_test/fast
 
+js8_encoder.o: js8_encoder.cpp.o
+.PHONY : js8_encoder.o
+
+# target to build an object file
+js8_encoder.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/js8dsp.dir/build.make CMakeFiles/js8dsp.dir/js8_encoder.cpp.o
+.PHONY : js8_encoder.cpp.o
+
+js8_encoder.i: js8_encoder.cpp.i
+.PHONY : js8_encoder.i
+
+# target to preprocess a source file
+js8_encoder.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/js8dsp.dir/build.make CMakeFiles/js8dsp.dir/js8_encoder.cpp.i
+.PHONY : js8_encoder.cpp.i
+
+js8_encoder.s: js8_encoder.cpp.s
+.PHONY : js8_encoder.s
+
+# target to generate assembly for a file
+js8_encoder.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/js8dsp.dir/build.make CMakeFiles/js8dsp.dir/js8_encoder.cpp.s
+.PHONY : js8_encoder.cpp.s
+
 js8dsp.o: js8dsp.cpp.o
 .PHONY : js8dsp.o
 
@@ -260,6 +284,9 @@ help:
 	@echo "... test"
 	@echo "... js8dsp"
 	@echo "... js8dsp_test"
+	@echo "... js8_encoder.o"
+	@echo "... js8_encoder.i"
+	@echo "... js8_encoder.s"
 	@echo "... js8dsp.o"
 	@echo "... js8dsp.i"
 	@echo "... js8dsp.s"

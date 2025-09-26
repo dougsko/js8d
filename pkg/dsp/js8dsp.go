@@ -2,7 +2,7 @@ package dsp
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../libjs8dsp
-#cgo LDFLAGS: -L${SRCDIR}/../../libjs8dsp/build -ljs8dsp -lm
+#cgo LDFLAGS: -L${SRCDIR}/../../libjs8dsp/build -ljs8dsp -lm -lstdc++
 
 #include <stdlib.h>
 #include "js8dsp.h"

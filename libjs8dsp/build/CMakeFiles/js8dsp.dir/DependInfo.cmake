@@ -8,6 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/Users/doug/bin/js8d/libjs8dsp/js8_encoder.cpp" "CMakeFiles/js8dsp.dir/js8_encoder.cpp.o" "gcc" "CMakeFiles/js8dsp.dir/js8_encoder.cpp.o.d"
   "/Users/doug/bin/js8d/libjs8dsp/js8dsp.cpp" "CMakeFiles/js8dsp.dir/js8dsp.cpp.o" "gcc" "CMakeFiles/js8dsp.dir/js8dsp.cpp.o.d"
   )
 

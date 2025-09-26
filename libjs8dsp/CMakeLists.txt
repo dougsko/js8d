@@ -40,6 +40,7 @@ endif()
 # Source files for the C API
 set(SOURCES
     js8dsp.cpp
+    js8_encoder.cpp
 )
 
 # Create static library

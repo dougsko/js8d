@@ -22,11 +22,14 @@ static const char* alsa_strerror_wrapper(int err) {
     return snd_strerror(err);
 }
 
-// Wrapper for snd_pcm_hw_params_alloca macro
-static snd_pcm_hw_params_t* snd_pcm_hw_params_alloca_wrapper() {
-    snd_pcm_hw_params_t *params;
-    snd_pcm_hw_params_alloca(&params);
-    return params;
+// Wrapper to allocate hw params structure
+static int snd_pcm_hw_params_malloc_wrapper(snd_pcm_hw_params_t **params) {
+    return snd_pcm_hw_params_malloc(params);
+}
+
+// Wrapper to free hw params structure
+static void snd_pcm_hw_params_free_wrapper(snd_pcm_hw_params_t *params) {
+    snd_pcm_hw_params_free(params);
 }
 */
 import "C"
@@ -186,11 +189,18 @@ func (a *ALSAAudio) initializeOutput() error {
 
 // configureHardwareParams configures ALSA hardware parameters
 func (a *ALSAAudio) configureHardwareParams(handle *C.snd_pcm_t, deviceType string) error {
+	var params *C.snd_pcm_hw_params_t
+
 	// Allocate parameters structure
-	params := C.snd_pcm_hw_params_alloca_wrapper()
+	ret := C.snd_pcm_hw_params_malloc_wrapper(&params)
+	if ret < 0 {
+		return fmt.Errorf("unable to allocate hw params for %s: %s",
+			deviceType, C.GoString(C.alsa_strerror_wrapper(ret)))
+	}
+	defer C.snd_pcm_hw_params_free_wrapper(params)
 
 	// Initialize parameters with full configuration space
-	ret := C.snd_pcm_hw_params_any(handle, params)
+	ret = C.snd_pcm_hw_params_any(handle, params)
 	if ret < 0 {
 		return fmt.Errorf("unable to initialize hw params for %s: %s",
 			deviceType, C.GoString(C.alsa_strerror_wrapper(ret)))

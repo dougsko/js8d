@@ -1,1 +1,82 @@
+# Temporary files
 2025-09-25-command-messageinit-is-analyzing-your-codebase.txt
+
+# Go build artifacts
+js8d
+js8d-*
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test and coverage files
+*.test
+coverage.out
+coverage.html
+*.prof
+
+# Go workspace files
+go.work
+go.work.sum
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# C++ build artifacts
+libjs8dsp/build/
+*.o
+*.a
+*.so
+*.dylib
+*.obj
+*.lib
+*.dll
+*.pdb
+
+# CMake files (outside of version control)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Configuration files (keep examples)
+config.yaml
+*.local.yaml
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+logs/
+
+# Temporary test files
+test_*
+*_test_output
+tmp/
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux specific
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+
+# Audio/radio specific temporary files
+*.wav
+*.au
+*.raw

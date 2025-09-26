@@ -1,2 +1,0 @@
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ar qc libjs8dsp.a CMakeFiles/js8dsp.dir/src/js8_decoder.cpp.o CMakeFiles/js8dsp.dir/src/varicode.cpp.o CMakeFiles/js8dsp.dir/src/js8dsp_api.cpp.o CMakeFiles/js8dsp.dir/src/bp_decoder.cpp.o CMakeFiles/js8dsp.dir/src/baseline_computation.cpp.o
-/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ranlib libjs8dsp.a

@@ -240,6 +240,7 @@ class JS8DClient {
         const callsign = document.querySelector('.callsign').textContent;
         const grid = document.querySelector('.grid').textContent.replace(/[()]/g, '');
 
+        // Send in natural format - preprocessing will handle JS8 formatting
         await this.sendMessageWithText(`${callsign}: HEARTBEAT ${grid}`);
     }
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 )
 
 // JS8 alphabet for 6-bit encoding (64 characters)
@@ -267,6 +268,117 @@ func ValidateMessage(message string) error {
 		}
 	}
 	return nil
+}
+
+// PreprocessJS8Message preprocesses a message to make it compatible with JS8 encoding
+// This handles common JS8 message formats and removes invalid characters
+func PreprocessJS8Message(message string) string {
+	// Handle common JS8 message patterns
+	message = strings.TrimSpace(message)
+
+	// Convert to uppercase for JS8 compatibility
+	message = strings.ToUpper(message)
+
+	// Handle CQ messages - replace spaces with standard JS8 format
+	if strings.HasPrefix(message, "CQ ") {
+		// "CQ CQ DE W1AW W1AW K" -> "CQ-DE-W1AW-K" (simplified for JS8 Normal mode)
+		parts := strings.Fields(message)
+		if len(parts) >= 4 && parts[0] == "CQ" && parts[2] == "DE" {
+			// Extract callsign (parts[3])
+			callsign := parts[3]
+			return fmt.Sprintf("CQ-DE-%s-K", callsign)
+		}
+		// Generic CQ format
+		return "CQ-CQ-CQ"
+	}
+
+	// Handle heartbeat messages
+	if strings.Contains(message, "HEARTBEAT") || strings.HasPrefix(message, "HB") {
+		// Extract callsign and grid if present
+		parts := strings.Fields(message)
+		var callsign, grid string
+
+		// Find callsign and grid separately
+		for _, part := range parts {
+			cleanPart := strings.Trim(part, ":,.")
+			if len(cleanPart) >= 3 && ContainsLettersAndNumbers(cleanPart) && !strings.Contains(cleanPart, "HEARTBEAT") && callsign == "" {
+				callsign = cleanPart
+			} else if IsGridSquare(cleanPart) && grid == "" {
+				grid = cleanPart
+			}
+		}
+
+		// Format as JS8 heartbeat (keep within 12 character limit)
+		if callsign != "" {
+			if grid != "" {
+				// Use compact format: HB + callsign + grid (truncate if too long)
+				compact := fmt.Sprintf("HB%s%s", callsign, grid)
+				if len(compact) <= 12 {
+					return compact
+				}
+				// If too long, use grid without full callsign or truncate
+				if len(callsign) > 6 {
+					callsign = callsign[:6] // Truncate long callsigns
+				}
+				compact = fmt.Sprintf("HB%s", callsign)
+				if len(compact) <= 12 {
+					return compact
+				}
+			}
+			// Just callsign heartbeat
+			if len(callsign) <= 8 { // HB + 8 chars = 10 chars, room for padding
+				return fmt.Sprintf("HB%s", callsign)
+			} else {
+				return fmt.Sprintf("HB%s", callsign[:8])
+			}
+		}
+		return "HBAUTO"
+	}
+
+	// For other messages, remove spaces and invalid characters
+	var result strings.Builder
+	for _, c := range message {
+		// Check if character is in JS8 alphabet
+		if c < 256 {
+			initAlphabetTable()
+			if alphabetTable[byte(c)] != 0xff {
+				result.WriteRune(c)
+			}
+		}
+	}
+
+	return result.String()
+}
+
+// ContainsLettersAndNumbers checks if a string contains both letters and numbers (exported for testing)
+func ContainsLettersAndNumbers(s string) bool {
+	hasLetter := false
+	hasNumber := false
+	for _, c := range s {
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' {
+			hasLetter = true
+		}
+		if c >= '0' && c <= '9' {
+			hasNumber = true
+		}
+		if hasLetter && hasNumber {
+			return true
+		}
+	}
+	return hasLetter && hasNumber
+}
+
+// IsGridSquare checks if a string looks like a Maidenhead grid square (exported for testing)
+func IsGridSquare(s string) bool {
+	if len(s) < 4 || len(s) > 6 {
+		return false
+	}
+	// Basic pattern: AA00 or AA00aa
+	return len(s) >= 4 &&
+		s[0] >= 'A' && s[0] <= 'R' &&
+		s[1] >= 'A' && s[1] <= 'R' &&
+		s[2] >= '0' && s[2] <= '9' &&
+		s[3] >= '0' && s[3] <= '9'
 }
 
 // PadMessage pads a message to exactly 12 characters using a fill character

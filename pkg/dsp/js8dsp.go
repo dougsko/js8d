@@ -152,6 +152,12 @@ func (d *DSP) EncodeMessage(message string, mode JS8Mode) ([]int16, error) {
 		return nil, fmt.Errorf("empty message")
 	}
 
+	// Preprocess message to handle spaces and invalid characters
+	message = PreprocessJS8Message(message)
+	if len(message) == 0 {
+		return nil, fmt.Errorf("message became empty after preprocessing")
+	}
+
 	var paddedMessage string
 	var err error
 

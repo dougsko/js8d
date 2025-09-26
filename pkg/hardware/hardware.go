@@ -120,15 +120,15 @@ func (h *HardwareManager) Initialize() error {
 	if h.config.EnableAudio {
 		log.Printf("Hardware: Initializing Audio...")
 
-		// Use mock audio for now - will be replaced with ALSA on Linux
-		audioConfig := MockAudioConfig{
+		// Use platform-specific audio implementation
+		audioConfig := PlatformAudioConfig{
 			InputDevice:  h.config.AudioInput,
 			OutputDevice: h.config.AudioOutput,
 			SampleRate:   h.config.SampleRate,
 			BufferSize:   h.config.BufferSize,
 			Channels:     1, // Mono for radio
 		}
-		h.audio = NewMockAudio(audioConfig)
+		h.audio = NewPlatformAudio(audioConfig)
 		if err := h.audio.Initialize(); err != nil {
 			return fmt.Errorf("failed to initialize audio: %w", err)
 		}

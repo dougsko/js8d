@@ -4,6 +4,10 @@
 # Go build artifacts
 js8d
 js8d-*
+js8ctl
+js8ctl-*
+js8encode
+js8encode-*
 *.exe
 *.exe~
 *.dll
@@ -55,6 +59,9 @@ config.yaml
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
+?_busy_timeout=*
 
 # Log files
 *.log

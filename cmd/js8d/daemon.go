@@ -12,7 +12,6 @@ import (
 	"github.com/js8call/js8d/pkg/client"
 	"github.com/js8call/js8d/pkg/config"
 	"github.com/js8call/js8d/pkg/engine"
-	"github.com/js8call/js8d/pkg/protocol"
 )
 
 // JS8Daemon represents the main daemon with Unix socket architecture
@@ -31,8 +30,8 @@ type JS8Daemon struct {
 	socketPath string
 }
 
-// NewJS8Daemon creates a new daemon instance
-func NewJS8Daemon(cfg *config.Config) (*JS8Daemon, error) {
+// NewJS8Daemon creates a new daemon instance with config path for reloading
+func NewJS8Daemon(cfg *config.Config, configPath string) (*JS8Daemon, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	socketPath := cfg.API.UnixSocket
@@ -48,8 +47,8 @@ func NewJS8Daemon(cfg *config.Config) (*JS8Daemon, error) {
 		socketClient: client.NewSocketClient(socketPath),
 	}
 
-	// Create core engine
-	daemon.coreEngine = engine.NewCoreEngine(cfg, socketPath)
+	// Create core engine with config path for reloading
+	daemon.coreEngine = engine.NewCoreEngine(cfg, socketPath, configPath)
 
 	// Initialize web server
 	if err := daemon.setupWebServer(); err != nil {
@@ -87,11 +86,7 @@ func (d *JS8Daemon) Start() error {
 		}
 	}()
 
-	// Start OLED driver (if enabled)
-	if d.config.Hardware.EnableGPIO {
-		d.wg.Add(1)
-		go d.oledDriver()
-	}
+	// OLED is handled directly by the core engine hardware manager
 
 	return nil
 }
@@ -137,6 +132,7 @@ func (d *JS8Daemon) setupWebServer() error {
 
 	// Main web interface
 	router.GET("/", d.handleHome)
+	router.GET("/settings", d.handleSettings)
 
 	// API routes
 	api := router.Group("/api/v1")
@@ -146,6 +142,10 @@ func (d *JS8Daemon) setupWebServer() error {
 		api.POST("/messages", d.handleSendMessage)
 		api.GET("/radio", d.handleGetRadio)
 		api.PUT("/radio/frequency", d.handleSetFrequency)
+		api.POST("/abort", d.handleAbortTransmission)
+		api.GET("/config", d.handleGetConfig)
+		api.POST("/config", d.handleSaveConfig)
+		api.POST("/config/reload", d.handleReloadConfig)
 	}
 
 	addr := fmt.Sprintf("%s:%d", d.config.Web.BindAddress, d.config.Web.Port)
@@ -157,49 +157,3 @@ func (d *JS8Daemon) setupWebServer() error {
 	return nil
 }
 
-// oledDriver manages OLED display updates
-func (d *JS8Daemon) oledDriver() {
-	defer d.wg.Done()
-
-	log.Printf("Starting OLED driver")
-
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-d.ctx.Done():
-			return
-
-		case <-ticker.C:
-			// Get current status
-			status, err := d.socketClient.GetStatus()
-			if err != nil {
-				log.Printf("OLED: failed to get status: %v", err)
-				continue
-			}
-
-			// Get latest message
-			messages, err := d.socketClient.GetMessages(1)
-			if err != nil {
-				log.Printf("OLED: failed to get messages: %v", err)
-				continue
-			}
-
-			// Update OLED display
-			d.updateOLED(status, messages)
-		}
-	}
-}
-
-// updateOLED updates the OLED display (mock implementation)
-func (d *JS8Daemon) updateOLED(status *protocol.Status, messages []protocol.Message) {
-	// TODO: Implement actual OLED driver
-	// For now, just log what would be displayed
-	log.Printf("OLED: %s %s | Freq: %.3f", status.Callsign, status.Grid, float64(status.Frequency)/1000000.0)
-
-	if len(messages) > 0 {
-		msg := messages[0]
-		log.Printf("OLED: RX: %s: %s", msg.From, msg.Message)
-	}
-}

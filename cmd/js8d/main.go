@@ -44,8 +44,8 @@ func main() {
 	log.Printf("Radio: %s on %s", cfg.Radio.Model, cfg.Radio.Device)
 	log.Printf("Web interface: http://%s:%d", cfg.Web.BindAddress, cfg.Web.Port)
 
-	// Create the daemon
-	daemon, err := NewJS8Daemon(cfg)
+	// Create the daemon with config path for reloading
+	daemon, err := NewJS8Daemon(cfg, *configPath)
 	if err != nil {
 		log.Fatalf("Failed to create daemon: %v", err)
 	}

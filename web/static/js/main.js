@@ -32,6 +32,11 @@ class JS8DClient {
             this.sendCQ();
         });
 
+        // Abort transmission button
+        document.getElementById('abort-tx').addEventListener('click', () => {
+            this.abortTransmission();
+        });
+
         // Enter key in message input
         document.getElementById('message-text').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -297,6 +302,31 @@ class JS8DClient {
         } catch (error) {
             console.error('Failed to set frequency:', error);
             alert('Failed to set frequency. Check connection.');
+        }
+    }
+
+    async abortTransmission() {
+        try {
+            const response = await fetch('/api/v1/abort', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log('Transmission aborted:', data);
+
+                // Silently force refresh status to get updated PTT state
+                setTimeout(() => this.updateStatus(), 100);
+
+            } else {
+                const error = await response.json();
+                console.error('Failed to abort transmission:', error.error);
+            }
+        } catch (error) {
+            console.error('Failed to abort transmission:', error);
         }
     }
 

@@ -1,10 +1,14 @@
 package main
 
 import (
+	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"gopkg.in/yaml.v2"
 )
 
 // handleHome serves the main web interface
@@ -122,5 +126,91 @@ func (d *JS8Daemon) handleSetFrequency(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "ok",
 		"frequency": req.Frequency,
+	})
+}
+
+// handleAbortTransmission aborts any ongoing transmission and turns off PTT
+func (d *JS8Daemon) handleAbortTransmission(c *gin.Context) {
+	if err := d.socketClient.AbortTransmission(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "aborted",
+	})
+}
+
+// handleSettings serves the settings page
+func (d *JS8Daemon) handleSettings(c *gin.Context) {
+	c.HTML(http.StatusOK, "settings.html", gin.H{
+		"version": Version,
+	})
+}
+
+// handleGetConfig returns the current configuration
+func (d *JS8Daemon) handleGetConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, d.config)
+}
+
+// handleSaveConfig saves the configuration to file
+func (d *JS8Daemon) handleSaveConfig(c *gin.Context) {
+	var newConfig map[string]interface{}
+	if err := c.ShouldBindJSON(&newConfig); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Convert to YAML and save to file
+	yamlData, err := yaml.Marshal(newConfig)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to marshal config: %v", err),
+		})
+		return
+	}
+
+	// Determine config file path (use the one passed to daemon or default)
+	configPath := "/tmp/claude/test_config.yaml" // Default for now
+	if len(os.Args) > 2 && os.Args[1] == "-config" {
+		configPath = os.Args[2]
+	}
+
+	// Write to file
+	if err := ioutil.WriteFile(configPath, yamlData, 0644); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to write config file: %v", err),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "saved",
+		"path":   configPath,
+	})
+}
+
+// handleReloadConfig triggers daemon to reload configuration
+func (d *JS8Daemon) handleReloadConfig(c *gin.Context) {
+	// Send reload command to core engine via socket
+	resp, err := d.socketClient.SendCommand("RELOAD")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to send reload command: %v", err),
+		})
+		return
+	}
+
+	if !resp.Success {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": resp.Error,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "reloaded",
 	})
 }

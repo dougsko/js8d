@@ -21,6 +21,7 @@ type HardwareConfig struct {
 	SampleRate     int
 	BufferSize     int
 	EnableRadio    bool
+	UseHamlib      bool   // If true, use hamlib for radio control; if false, use mock
 	RadioModel     string
 	RadioDevice    string
 	RadioBaudRate  int
@@ -153,8 +154,14 @@ func (h *HardwareManager) Initialize() error {
 			Enabled:  true,
 		}
 
-		// Use mock radio for testing - Hamlib CGO needs compatibility fixes
-		h.radio = NewMockRadio(radioConfig)
+		// Choose between hamlib and mock radio based on configuration
+		if h.config.UseHamlib {
+			log.Printf("Hardware: Using Hamlib for radio control")
+			h.radio = NewHamlibRadio(radioConfig)
+		} else {
+			log.Printf("Hardware: Using mock radio for testing")
+			h.radio = NewMockRadio(radioConfig)
+		}
 		if err := h.radio.Initialize(); err != nil {
 			return fmt.Errorf("failed to initialize radio: %w", err)
 		}

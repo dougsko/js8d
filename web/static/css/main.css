@@ -248,6 +248,28 @@ button:disabled {
     background: #388E3C;
 }
 
+.abort-button {
+    background: #F44336 !important;
+    font-weight: bold;
+    border: 2px solid #D32F2F !important;
+    animation: pulse-red 2s infinite;
+}
+
+.abort-button:hover {
+    background: #D32F2F !important;
+    box-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+}
+
+.abort-button:active {
+    background: #B71C1C !important;
+}
+
+@keyframes pulse-red {
+    0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
+}
+
 /* Status Panel */
 .status-panel {
     background: #2d2d2d;

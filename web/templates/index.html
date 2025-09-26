@@ -14,6 +14,7 @@
                 <div class="station-details">
                     <span class="callsign">{{.callsign}}</span>
                     <span class="grid">({{.grid}})</span>
+                    <a href="/settings" style="color: #2196F3; text-decoration: none; margin-left: 15px;">⚙️ Settings</a>
                 </div>
             </div>
             <div class="radio-status">
@@ -56,6 +57,7 @@
                         <button id="send-message" type="button">Send Message</button>
                         <button id="send-heartbeat" type="button">Send Heartbeat</button>
                         <button id="send-cq" type="button">Send CQ</button>
+                        <button id="abort-tx" type="button" class="abort-button">ABORT TX</button>
                     </div>
                 </div>
             </section>

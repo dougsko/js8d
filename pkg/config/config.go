@@ -15,10 +15,11 @@ type Config struct {
 	} `yaml:"station"`
 
 	Radio struct {
-		Device    string `yaml:"device"`
-		Model     string `yaml:"model"`
-		BaudRate  int    `yaml:"baud_rate"`
-		PTTMethod string `yaml:"ptt_method"`
+		Device     string `yaml:"device"`
+		Model      string `yaml:"model"`
+		BaudRate   int    `yaml:"baud_rate"`
+		PTTMethod  string `yaml:"ptt_method"`
+		UseHamlib  bool   `yaml:"use_hamlib"`
 	} `yaml:"radio"`
 
 	Audio struct {

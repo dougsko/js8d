@@ -135,4 +135,6 @@ const (
 	CmdPing      = "PING"
 	CmdRadio     = "RADIO"
 	CmdAudio     = "AUDIO"
+	CmdAbort     = "ABORT"
+	CmdReload    = "RELOAD"
 )

@@ -18,6 +18,7 @@ import (
 // CoreEngine represents the main JS8 processing engine
 type CoreEngine struct {
 	config     *config.Config
+	configPath string
 	socketPath string
 	listener   net.Listener
 	running    bool
@@ -40,10 +41,15 @@ type CoreEngine struct {
 	// Channels for message processing
 	rxMessages chan protocol.Message
 	txMessages chan protocol.Message
+
+	// Transmission control
+	abortTx      chan bool
+	transmitting bool
+	txMutex      sync.RWMutex
 }
 
-// NewCoreEngine creates a new core engine
-func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
+// NewCoreEngine creates a new core engine with config path for reloading
+func NewCoreEngine(cfg *config.Config, socketPath, configPath string) *CoreEngine {
 	// Create hardware configuration from config
 	hardwareConfig := hardware.HardwareConfig{
 		EnableGPIO:     cfg.Hardware.EnableGPIO,
@@ -59,6 +65,7 @@ func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
 		SampleRate:     cfg.Audio.SampleRate,
 		BufferSize:     cfg.Audio.BufferSize,
 		EnableRadio:    cfg.Radio.Device != "", // Enable radio if device is specified
+		UseHamlib:      cfg.Radio.UseHamlib,
 		RadioModel:     cfg.Radio.Model,
 		RadioDevice:    cfg.Radio.Device,
 		RadioBaudRate:  cfg.Radio.BaudRate,
@@ -83,6 +90,7 @@ func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
 
 	return &CoreEngine{
 		config:          cfg,
+		configPath:      configPath,
 		socketPath:      socketPath,
 		startTime:       time.Now(),
 		frequency:       14078000, // Default JS8 frequency
@@ -92,6 +100,8 @@ func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
 		messages:        make([]protocol.Message, 0),
 		dspEngine:       dsp.NewDSP(),
 		hardwareManager: hardware.NewHardwareManager(hardwareConfig),
+		abortTx:         make(chan bool, 1),
+		transmitting:    false,
 	}
 }
 
@@ -247,6 +257,12 @@ func (e *CoreEngine) handleCommand(cmd *protocol.Command) *protocol.Response {
 		return protocol.NewSuccessResponse(map[string]interface{}{
 			"pong": time.Now().Unix(),
 		})
+
+	case protocol.CmdAbort:
+		return e.handleAbort()
+
+	case protocol.CmdReload:
+		return e.handleReload()
 
 	case protocol.CmdQuit:
 		return protocol.NewSuccessResponse(map[string]interface{}{
@@ -438,6 +454,17 @@ func (e *CoreEngine) isRunning() bool {
 
 // transmitMessage encodes and transmits a message using the DSP engine
 func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
+	// Set transmission state
+	e.txMutex.Lock()
+	e.transmitting = true
+	e.txMutex.Unlock()
+
+	defer func() {
+		e.txMutex.Lock()
+		e.transmitting = false
+		e.txMutex.Unlock()
+	}()
+
 	// Set PTT flag and hardware PTT during transmission
 	e.mutex.Lock()
 	e.ptt = true
@@ -481,9 +508,21 @@ func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
 		return fmt.Errorf("audio output failed: %w", err)
 	}
 
-	// Wait for transmission to complete
+	// Wait for transmission to complete with abort monitoring
 	duration := e.dspEngine.EstimateAudioDuration(mode)
-	time.Sleep(duration)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	endTime := time.Now().Add(duration)
+	for time.Now().Before(endTime) {
+		select {
+		case <-e.abortTx:
+			log.Printf("DSP: Transmission aborted by user")
+			return fmt.Errorf("transmission aborted")
+		case <-ticker.C:
+			// Continue waiting
+		}
+	}
 
 	log.Printf("DSP: Transmission complete")
 
@@ -717,12 +756,12 @@ func (e *CoreEngine) sendHeartbeat() {
 		return // Can't send heartbeat without callsign
 	}
 
-	// Format heartbeat message: "HB AUTO callsign grid"
+	// Format heartbeat message: "HBAUTO" + callsign + grid (no spaces - JS8 doesn't support them)
 	var hbMessage string
 	if grid != "" {
-		hbMessage = fmt.Sprintf("HB AUTO %s %s", callsign, grid)
+		hbMessage = fmt.Sprintf("HBAUTO%s%s", callsign, grid)
 	} else {
-		hbMessage = fmt.Sprintf("HB AUTO %s", callsign)
+		hbMessage = fmt.Sprintf("HBAUTO%s", callsign)
 	}
 
 	// Truncate if too long for JS8
@@ -851,4 +890,75 @@ func (e *CoreEngine) GetRadioStatus() map[string]interface{} {
 	}
 
 	return status
+}
+
+// handleAbort aborts any ongoing transmission and turns off PTT
+func (e *CoreEngine) handleAbort() *protocol.Response {
+	e.txMutex.Lock()
+	isTransmitting := e.transmitting
+	e.txMutex.Unlock()
+
+	if isTransmitting {
+		// Signal abort to any ongoing transmission
+		select {
+		case e.abortTx <- true:
+			log.Printf("Engine: Transmission abort signal sent")
+		default:
+			// Channel is full or no one is listening, but that's ok
+		}
+	}
+
+	// Force PTT off immediately
+	if err := e.hardwareManager.SetPTT(false); err != nil {
+		log.Printf("Warning: failed to clear PTT during abort: %v", err)
+	}
+
+	// Update engine PTT state
+	e.mutex.Lock()
+	e.ptt = false
+	e.mutex.Unlock()
+
+	log.Printf("Engine: Emergency transmission abort completed")
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":        "aborted",
+		"was_transmitting": isTransmitting,
+		"ptt_cleared":   true,
+	})
+}
+
+// handleReload reloads configuration from file
+func (e *CoreEngine) handleReload() *protocol.Response {
+	if e.configPath == "" {
+		return protocol.NewErrorResponse("no config path specified - cannot reload")
+	}
+
+	// Load new configuration
+	newConfig, err := config.LoadConfig(e.configPath)
+	if err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to load config: %v", err))
+	}
+
+	// Update engine configuration
+	e.mutex.Lock()
+	oldCallsign := e.config.Station.Callsign
+	oldGrid := e.config.Station.Grid
+	e.config = newConfig
+	e.mutex.Unlock()
+
+	log.Printf("Engine: Configuration reloaded from %s", e.configPath)
+	log.Printf("Engine: Station updated - %s (%s)", newConfig.Station.Callsign, newConfig.Station.Grid)
+
+	// TODO: In a production system, we might want to reinitialize hardware
+	// components if their configuration changed, but for now we'll just
+	// update the basic settings
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":       "reloaded",
+		"config_path":  e.configPath,
+		"old_callsign": oldCallsign,
+		"new_callsign": newConfig.Station.Callsign,
+		"old_grid":     oldGrid,
+		"new_grid":     newConfig.Station.Grid,
+	})
 }

@@ -201,3 +201,17 @@ func (c *SocketClient) Ping() error {
 func (c *SocketClient) IsConnected() bool {
 	return c.Ping() == nil
 }
+
+// AbortTransmission aborts any ongoing transmission and turns off PTT
+func (c *SocketClient) AbortTransmission() error {
+	resp, err := c.SendCommand("ABORT")
+	if err != nil {
+		return err
+	}
+
+	if !resp.Success {
+		return fmt.Errorf("abort error: %s", resp.Error)
+	}
+
+	return nil
+}

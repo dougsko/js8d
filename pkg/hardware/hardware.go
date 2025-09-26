@@ -3,6 +3,7 @@ package hardware
 import (
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/dougsko/js8d/pkg/verbose"
@@ -127,6 +128,24 @@ func (h *HardwareManager) Initialize() error {
 	// Initialize Audio if enabled
 	if h.config.EnableAudio {
 		log.Printf("Hardware: Initializing Audio...")
+
+		// Enumerate available audio devices
+		log.Printf("Hardware: Enumerating available audio devices...")
+		if devices, err := GetAudioDevices(); err != nil {
+			log.Printf("Hardware: Warning - could not enumerate audio devices: %v", err)
+		} else {
+			log.Printf("Hardware: Found %d audio devices:", len(devices))
+			for _, device := range devices {
+				capabilities := []string{}
+				if device.IsInput {
+					capabilities = append(capabilities, "input")
+				}
+				if device.IsOutput {
+					capabilities = append(capabilities, "output")
+				}
+				log.Printf("Hardware:   %s (%s)", device.Name, strings.Join(capabilities, ", "))
+			}
+		}
 
 		// Use platform-specific audio implementation
 		audioConfig := PlatformAudioConfig{

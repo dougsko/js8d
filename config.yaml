@@ -12,8 +12,8 @@ radio:
   ptt_method: "CAT"           # PTT method: CAT, GPIO, or NONE
 
 audio:
-  input_device: "Built-in Microphone"      # macOS audio input device
-  output_device: "Built-in Output"         # macOS audio output device
+  input_device: "default"                  # ALSA audio input device (or try "hw:0,0")
+  output_device: "default"                 # ALSA audio output device (or try "hw:0,0")
   sample_rate: 48000          # Audio sample rate (48000 recommended)
   buffer_size: 1024           # Audio buffer size
 

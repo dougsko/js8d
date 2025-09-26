@@ -503,3 +503,58 @@ func (a *ALSAAudio) validateDeviceExists(deviceName, deviceType string) error {
 	log.Printf("ALSA: Cannot validate non-standard device name '%s', will attempt to open", deviceName)
 	return nil
 }
+
+// GetAudioDevices returns a list of available ALSA audio devices
+func GetAudioDevices() ([]AudioDevice, error) {
+	devices := []AudioDevice{}
+	deviceID := uint32(0)
+
+	// Add default devices
+	devices = append(devices, AudioDevice{
+		ID:       deviceID,
+		Name:     "default",
+		IsInput:  true,
+		IsOutput: true,
+	})
+	deviceID++
+
+	// Scan for hardware devices
+	for card := 0; card < 32; card++ {
+		cardPath := fmt.Sprintf("/proc/asound/card%d", card)
+		if _, err := os.Stat(cardPath); err != nil {
+			continue // Card doesn't exist
+		}
+
+		// Try to get card info
+		cardName := fmt.Sprintf("card%d", card)
+		cardInfoPath := fmt.Sprintf("/proc/asound/card%d/id", card)
+		if idData, err := os.ReadFile(cardInfoPath); err == nil {
+			cardName = strings.TrimSpace(string(idData))
+		}
+
+		// Add hw:X,0 devices (most common)
+		hwDevice := fmt.Sprintf("hw:%d,0", card)
+		devices = append(devices, AudioDevice{
+			ID:       deviceID,
+			Name:     hwDevice,
+			IsInput:  true,
+			IsOutput: true,
+		})
+		deviceID++
+
+		// Add plughw:X,0 devices (with format conversion)
+		plughwDevice := fmt.Sprintf("plughw:%d,0", card)
+		devices = append(devices, AudioDevice{
+			ID:       deviceID,
+			Name:     plughwDevice,
+			IsInput:  true,
+			IsOutput: true,
+		})
+		deviceID++
+
+		log.Printf("ALSA: Found audio card %d: %s", card, cardName)
+	}
+
+	log.Printf("ALSA: Enumerated %d audio devices", len(devices))
+	return devices, nil
+}

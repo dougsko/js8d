@@ -214,3 +214,77 @@ func (d *JS8Daemon) handleReloadConfig(c *gin.Context) {
 		"status": "reloaded",
 	})
 }
+
+// handleTestCAT tests the CAT (Computer Aided Transceiver) connection
+func (d *JS8Daemon) handleTestCAT(c *gin.Context) {
+	var req struct {
+		Device   string `json:"device"`
+		Model    string `json:"model"`
+		BaudRate int    `json:"baud_rate"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Send CAT test command to daemon via socket
+	cmd := fmt.Sprintf("TEST_CAT %s %s %d", req.Device, req.Model, req.BaudRate)
+	resp, err := d.socketClient.SendCommand(cmd)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to test CAT: %v", err),
+		})
+		return
+	}
+
+	if !resp.Success {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": resp.Error,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "CAT connection test successful",
+		"details": resp.Data,
+	})
+}
+
+// handleTestPTT tests the PTT (Push To Talk) functionality
+func (d *JS8Daemon) handleTestPTT(c *gin.Context) {
+	var req struct {
+		Method  string  `json:"method"`
+		Port    string  `json:"port"`
+		TxDelay float64 `json:"tx_delay"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Send PTT test command to daemon via socket
+	cmd := fmt.Sprintf("TEST_PTT %s %s %.1f", req.Method, req.Port, req.TxDelay)
+	resp, err := d.socketClient.SendCommand(cmd)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to test PTT: %v", err),
+		})
+		return
+	}
+
+	if !resp.Success {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": resp.Error,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "PTT test successful",
+		"details": resp.Data,
+	})
+}

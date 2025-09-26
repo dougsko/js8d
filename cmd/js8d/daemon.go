@@ -146,6 +146,8 @@ func (d *JS8Daemon) setupWebServer() error {
 		api.GET("/config", d.handleGetConfig)
 		api.POST("/config", d.handleSaveConfig)
 		api.POST("/config/reload", d.handleReloadConfig)
+		api.POST("/radio/test-cat", d.handleTestCAT)
+		api.POST("/radio/test-ptt", d.handleTestPTT)
 	}
 
 	addr := fmt.Sprintf("%s:%d", d.config.Web.BindAddress, d.config.Web.Port)

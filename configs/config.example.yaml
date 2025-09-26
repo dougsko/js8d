@@ -6,16 +6,45 @@ station:
   grid: "EM12cd"              # Your Maidenhead grid square
 
 radio:
-  device: "/dev/ttyUSB0"      # Serial device for radio control
-  model: "Hamlib"             # Radio model (Hamlib auto-detect)
-  baud_rate: 4800             # Serial baud rate
-  ptt_method: "CAT"           # PTT method: CAT, GPIO, or NONE
+  # Basic Configuration
+  use_hamlib: true            # Enable Hamlib for radio control
+  model: "10001"              # Hamlib radio model ID (10001 = QRP Labs QDX)
+  poll_interval: 1000         # Polling interval in milliseconds
+
+  # CAT Control Parameters
+  device: "/dev/ttyUSBmodem14201"  # Serial device for radio control
+  baud_rate: 115200           # Serial baud rate (QMX/QDX uses 115200)
+  data_bits: "default"        # Data bits: default, 7, 8
+  stop_bits: "default"        # Stop bits: default, 1, 2
+  handshake: "default"        # Handshake: default, none, xon_xoff, hardware
+  dtr: "default"              # DTR control line: default, high, low
+  rts: "default"              # RTS control line: default, high, low
+
+  # PTT Configuration
+  ptt_method: "cat"           # PTT method: vox, cat, dtr, rts
+  ptt_port: "/dev/ttyUSBmodem14201"  # PTT serial port (usually same as CAT)
+  mode: "data"                # Radio mode: none, usb, data
+  tx_audio_source: "front"    # TX audio: rear, front
+  split_operation: "rig"      # Split operation: none, rig, fake
+  ptt_command: ""             # Optional PTT command
+  tx_delay: 0.2               # TX delay in seconds
 
 audio:
-  input_device: "hw:1,0"      # ALSA audio input device
-  output_device: "hw:1,0"     # ALSA audio output device
+  # Device Configuration
+  input_device: "QMX Transceiver"     # Audio input device name
+  input_channels: "mono"              # Input channels: mono, stereo
+  output_device: "QMX Transceiver"    # Audio output device name
+  output_channels: "mono"             # Output channels: mono, stereo
+  notification_device: "Built-in Output"  # Notification audio device
+
+  # Audio Parameters
   sample_rate: 48000          # Audio sample rate (48000 recommended)
   buffer_size: 1024           # Audio buffer size
+
+  # Advanced Options
+  save_directory: "/Users/doug/Library/Application Support/JS8Call/save"
+  remember_power_tx: false    # Remember power settings by band (TX)
+  remember_power_tune: false  # Remember power settings by band (Tune)
 
 web:
   port: 8080                  # Web interface port
@@ -37,3 +66,7 @@ hardware:
   ptt_gpio_pin: 18            # GPIO pin for PTT control (BCM numbering)
   status_led_pin: 24          # GPIO pin for status LED
   enable_gpio: false          # Enable GPIO features (requires root on Pi)
+  enable_oled: false          # Enable OLED display
+  oled_i2c_address: 0x3C      # OLED I2C address
+  oled_width: 128             # OLED width in pixels
+  oled_height: 64             # OLED height in pixels

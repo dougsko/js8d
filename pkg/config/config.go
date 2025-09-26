@@ -200,8 +200,12 @@ func (c *Config) Validate() error {
 	if c.Station.Grid == "" {
 		return fmt.Errorf("station grid is required")
 	}
+	// Check if radio device is required
 	if c.Radio.UseHamlib && c.Radio.Device == "" {
-		return fmt.Errorf("radio device is required when using Hamlib")
+		// Dummy rig (model "1") doesn't require a device
+		if c.Radio.Model != "1" {
+			return fmt.Errorf("radio device is required when using Hamlib (except for dummy rig)")
+		}
 	}
 	if c.Audio.InputDevice == "" {
 		c.Audio.InputDevice = "default"

@@ -158,8 +158,8 @@ func (r *HamlibRadio) Initialize() error {
 		return fmt.Errorf("failed to initialize rig model %s", r.config.Model)
 	}
 
-	// Set device path
-	if r.config.Device != "" {
+	// Set device path (not needed for dummy rig)
+	if r.config.Device != "" && r.config.Model != "1" {
 		devicePath := C.CString(r.config.Device)
 		defer C.free(unsafe.Pointer(devicePath))
 
@@ -172,6 +172,8 @@ func (r *HamlibRadio) Initialize() error {
 		} else {
 			verbose.Printf("Hamlib: Device path set successfully")
 		}
+	} else if r.config.Model == "1" {
+		verbose.Printf("Hamlib: Using dummy rig - no device path needed")
 	}
 
 	// Set baud rate explicitly

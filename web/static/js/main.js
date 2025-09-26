@@ -107,15 +107,24 @@ class JS8DClient {
 
         this.spectrumWebSocket.onmessage = (event) => {
             const data = JSON.parse(event.data);
+            console.log('Spectrum data received:', {
+                type: data.type,
+                timestamp: data.timestamp,
+                spectrum_bins: data.spectrum?.bins?.length || 0,
+                sample_rate: data.sample_rate
+            });
             this.updateSpectrum(data);
         };
 
         this.spectrumWebSocket.onclose = () => {
             console.log('Spectrum WebSocket closed');
-            this.spectrumActive = false;
-            const button = document.getElementById('toggle-spectrum');
-            button.textContent = 'Start Display';
-            button.classList.remove('active');
+            if (this.spectrumActive) {
+                // Only update UI if we didn't intentionally close it
+                this.spectrumActive = false;
+                const button = document.getElementById('toggle-spectrum');
+                button.textContent = 'Start Display';
+                button.classList.remove('active');
+            }
         };
 
         this.spectrumWebSocket.onerror = (error) => {

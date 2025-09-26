@@ -88,11 +88,18 @@ OSStatus inputCallback(void* inRefCon,
                       UInt32 inNumberFrames,
                       AudioBufferList* ioData) {
 
-    // Create buffer list for input
+    // Debug: Log that callback was called
+    static int callbackCount = 0;
+    callbackCount++;
+    if (callbackCount % 100 == 1) { // Log every 100th callback to avoid spam
+        printf("***** AUDIO DEBUG: inputCallback called (count: %d, frames: %u) *****\n", callbackCount, inNumberFrames);
+    }
+
+    // Create buffer list for input - CoreAudio uses float samples
     AudioBufferList bufferList;
     bufferList.mNumberBuffers = 1;
     bufferList.mBuffers[0].mNumberChannels = 1;
-    bufferList.mBuffers[0].mDataByteSize = inNumberFrames * sizeof(int16_t);
+    bufferList.mBuffers[0].mDataByteSize = inNumberFrames * sizeof(float);
     bufferList.mBuffers[0].mData = malloc(bufferList.mBuffers[0].mDataByteSize);
 
     // Render input audio
@@ -112,8 +119,15 @@ OSStatus inputCallback(void* inRefCon,
             intSamples[i] = (int16_t)(sample * 32767.0f);
         }
 
-        writeAudioBuffer(&inputBuffer, intSamples, inNumberFrames);
+        int written = writeAudioBuffer(&inputBuffer, intSamples, inNumberFrames);
+        if (callbackCount % 100 == 1) {
+            printf("***** AUDIO DEBUG: inputCallback wrote %d samples to buffer *****\n", written);
+        }
         free(intSamples);
+    } else {
+        if (callbackCount % 100 == 1) {
+            printf("***** AUDIO DEBUG: inputCallback AudioUnitRender failed with status: %d *****\n", (int)status);
+        }
     }
 
     free(bufferList.mBuffers[0].mData);
@@ -149,8 +163,60 @@ OSStatus outputCallback(void* inRefCon,
     return noErr;
 }
 
+// Find audio device by name
+AudioDeviceID findAudioDeviceByName(const char* deviceName) {
+    AudioObjectPropertyAddress propertyAddress = {
+        kAudioHardwarePropertyDevices,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+
+    UInt32 dataSize = 0;
+    OSStatus status = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize);
+    if (status != noErr) return kAudioObjectUnknown;
+
+    int deviceCount = dataSize / sizeof(AudioDeviceID);
+    AudioDeviceID* deviceIDs = malloc(dataSize);
+    status = AudioObjectGetPropertyData(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize, deviceIDs);
+    if (status != noErr) {
+        free(deviceIDs);
+        return kAudioObjectUnknown;
+    }
+
+    AudioDeviceID foundDevice = kAudioObjectUnknown;
+    for (int i = 0; i < deviceCount; i++) {
+        AudioDeviceID deviceID = deviceIDs[i];
+
+        // Get device name
+        propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString;
+        propertyAddress.mScope = kAudioObjectPropertyScopeGlobal;
+        CFStringRef deviceNameRef = NULL;
+        UInt32 nameSize = sizeof(CFStringRef);
+
+        status = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, NULL, &nameSize, &deviceNameRef);
+        if (status == noErr && deviceNameRef) {
+            char currentDeviceName[256];
+            if (CFStringGetCString(deviceNameRef, currentDeviceName, sizeof(currentDeviceName), kCFStringEncodingUTF8)) {
+                printf("***** AUDIO DEBUG: Found device: %s *****\n", currentDeviceName);
+                if (strcmp(currentDeviceName, deviceName) == 0) {
+                    foundDevice = deviceID;
+                    printf("***** AUDIO DEBUG: Selected input device: %s (ID: %u) *****\n", deviceName, (unsigned int)deviceID);
+                }
+            }
+            CFRelease(deviceNameRef);
+
+            if (foundDevice != kAudioObjectUnknown) break;
+        }
+    }
+
+    free(deviceIDs);
+    return foundDevice;
+}
+
 // Initialize Core Audio input
 OSStatus initCoreAudioInput(UInt32 sampleRate, UInt32 bufferSize) {
+    printf("***** AUDIO DEBUG: Initializing CoreAudio input... *****\n");
+
     AudioComponentDescription desc;
     desc.componentType = kAudioUnitType_Output;
     desc.componentSubType = kAudioUnitSubType_HALOutput;
@@ -159,22 +225,34 @@ OSStatus initCoreAudioInput(UInt32 sampleRate, UInt32 bufferSize) {
     desc.componentFlagsMask = 0;
 
     AudioComponent component = AudioComponentFindNext(NULL, &desc);
-    if (!component) return -1;
+    if (!component) {
+        printf("***** AUDIO DEBUG: Failed to find HAL output component *****\n");
+        return -1;
+    }
 
     OSStatus status = AudioComponentInstanceNew(component, &inputAudioUnit);
-    if (status != noErr) return status;
+    if (status != noErr) {
+        printf("***** AUDIO DEBUG: Failed to create audio unit instance: %d *****\n", (int)status);
+        return status;
+    }
 
     // Enable input
     UInt32 enableInput = 1;
     status = AudioUnitSetProperty(inputAudioUnit, kAudioOutputUnitProperty_EnableIO,
                                 kAudioUnitScope_Input, 1, &enableInput, sizeof(enableInput));
-    if (status != noErr) return status;
+    if (status != noErr) {
+        printf("***** AUDIO DEBUG: Failed to enable input: %d *****\n", (int)status);
+        return status;
+    }
 
     // Disable output
     UInt32 disableOutput = 0;
     status = AudioUnitSetProperty(inputAudioUnit, kAudioOutputUnitProperty_EnableIO,
                                 kAudioUnitScope_Output, 0, &disableOutput, sizeof(disableOutput));
-    if (status != noErr) return status;
+    if (status != noErr) {
+        printf("***** AUDIO DEBUG: Failed to disable output: %d *****\n", (int)status);
+        return status;
+    }
 
     // Set format
     AudioStreamBasicDescription format;
@@ -503,11 +581,16 @@ func (a *CoreAudio) StartInput() error {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
+	log.Printf("***** AUDIO DEBUG: CoreAudio StartInput() called - recording:%v *****", a.recording)
+
 	if a.recording {
 		return fmt.Errorf("audio input already started")
 	}
 
+	log.Printf("***** AUDIO DEBUG: Calling C.startCoreAudioInput()... *****")
 	status := C.startCoreAudioInput()
+	log.Printf("***** AUDIO DEBUG: C.startCoreAudioInput() returned status: %d *****", int(status))
+
 	if status != 0 {
 		return fmt.Errorf("failed to start Core Audio input: %d", int(status))
 	}
@@ -515,7 +598,7 @@ func (a *CoreAudio) StartInput() error {
 	a.recording = true
 	go a.inputReaderWorker()
 
-	log.Printf("CoreAudio: Audio input started")
+	log.Printf("CoreAudio: Audio input started successfully")
 	return nil
 }
 
@@ -623,12 +706,24 @@ func (a *CoreAudio) Close() error {
 // inputReaderWorker reads audio from Core Audio input buffer
 func (a *CoreAudio) inputReaderWorker() {
 	buffer := make([]int16, a.config.BufferSize)
+	log.Printf("***** AUDIO DEBUG: inputReaderWorker started, buffer size: %d *****", len(buffer))
+
+	sampleCount := 0
+	lastLogTime := time.Now()
 
 	for a.isRecording() {
 		// Read samples from Core Audio buffer
 		samplesRead := int(C.readInputSamples((*C.int16_t)(unsafe.Pointer(&buffer[0])), C.int(len(buffer))))
 
 		if samplesRead > 0 {
+			sampleCount++
+
+			// Log occasionally to show activity
+			if time.Since(lastLogTime) > 5*time.Second {
+				log.Printf("***** AUDIO DEBUG: inputReaderWorker active - read %d samples (total blocks: %d) *****", samplesRead, sampleCount)
+				lastLogTime = time.Now()
+			}
+
 			// Copy samples to avoid race conditions
 			samples := make([]int16, samplesRead)
 			copy(samples, buffer[:samplesRead])
@@ -637,7 +732,13 @@ func (a *CoreAudio) inputReaderWorker() {
 			select {
 			case a.inputSamples <- samples:
 			default:
-				// Drop samples if buffer full
+				log.Printf("***** AUDIO DEBUG: inputSamples channel full, dropping %d samples *****", samplesRead)
+			}
+		} else {
+			// Log if we're not getting samples
+			if time.Since(lastLogTime) > 5*time.Second {
+				log.Printf("***** AUDIO DEBUG: inputReaderWorker running but C.readInputSamples() returned 0 samples *****")
+				lastLogTime = time.Now()
 			}
 		}
 
@@ -647,10 +748,13 @@ func (a *CoreAudio) inputReaderWorker() {
 		// Check for stop signal
 		select {
 		case <-a.inputWorker:
+			log.Printf("***** AUDIO DEBUG: inputReaderWorker stopping (received stop signal) *****")
 			return
 		default:
 		}
 	}
+
+	log.Printf("***** AUDIO DEBUG: inputReaderWorker stopped (a.isRecording() = false) *****")
 }
 
 // outputWriterWorker writes audio to Core Audio output buffer

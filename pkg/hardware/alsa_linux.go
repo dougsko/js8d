@@ -19,6 +19,12 @@ import (
 static const char* alsa_strerror_wrapper(int err) {
     return snd_strerror(err);
 }
+
+// Wrapper for snd_pcm_hw_params_alloca macro
+static int snd_pcm_hw_params_alloca_wrapper(snd_pcm_hw_params_t **params) {
+    snd_pcm_hw_params_alloca(params);
+    return 0;
+}
 */
 import "C"
 
@@ -180,7 +186,7 @@ func (a *ALSAAudio) configureHardwareParams(handle *C.snd_pcm_t, deviceType stri
 	var params *C.snd_pcm_hw_params_t
 
 	// Allocate parameters structure
-	C.snd_pcm_hw_params_alloca(&params)
+	C.snd_pcm_hw_params_alloca_wrapper(&params)
 
 	// Initialize parameters with full configuration space
 	ret := C.snd_pcm_hw_params_any(handle, params)

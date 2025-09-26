@@ -863,7 +863,18 @@ func (d *JS8Daemon) handleAudioWebSocket(c *gin.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			data := audioMonitor.GetVisualizationData()
+			vizData := audioMonitor.GetVisualizationData()
+
+			// Convert to format expected by JavaScript client
+			data := map[string]interface{}{
+				"type": "spectrum",
+				"timestamp": vizData.SpectrumData.Timestamp,
+				"sample_rate": vizData.SpectrumData.SampleRate,
+				"spectrum": map[string]interface{}{
+					"bins": vizData.SpectrumData.Spectrum,
+					"freq_step": vizData.SpectrumData.FreqStep,
+				},
+			}
 
 			if err := conn.WriteJSON(data); err != nil {
 				log.Printf("WebSocket write error: %v", err)
@@ -875,6 +886,58 @@ func (d *JS8Daemon) handleAudioWebSocket(c *gin.Context) {
 			return
 		}
 	}
+}
+
+// handleTestAudioData returns raw audio data for debugging
+func (d *JS8Daemon) handleTestAudioData(c *gin.Context) {
+	audioMonitor := d.coreEngine.GetAudioMonitor()
+	if audioMonitor == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "audio monitor not available",
+		})
+		return
+	}
+
+	// Get current data
+	vizData := audioMonitor.GetVisualizationData()
+
+	// Calculate some basic stats
+	spectrumSum := float32(0)
+	spectrumMax := float32(-100) // Start with very low dB
+	spectrumActive := 0
+
+	for _, val := range vizData.SpectrumData.Spectrum {
+		spectrumSum += val
+		if val > spectrumMax {
+			spectrumMax = val
+		}
+		if val > -80 { // Count bins above -80dB as "active"
+			spectrumActive++
+		}
+	}
+
+	avgSpectrum := float32(0)
+	if len(vizData.SpectrumData.Spectrum) > 0 {
+		avgSpectrum = spectrumSum / float32(len(vizData.SpectrumData.Spectrum))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"timestamp": vizData.SpectrumData.Timestamp,
+		"sample_rate": vizData.SpectrumData.SampleRate,
+		"spectrum_bins": len(vizData.SpectrumData.Spectrum),
+		"spectrum_avg_db": avgSpectrum,
+		"spectrum_max_db": spectrumMax,
+		"spectrum_active_bins": spectrumActive,
+		"rms_level": vizData.AudioLevelData.RMSLevel,
+		"peak_level": vizData.AudioLevelData.PeakLevel,
+		"clipping": vizData.AudioLevelData.Clipping,
+		"raw_spectrum_sample": func() []float32 {
+			if len(vizData.SpectrumData.Spectrum) > 10 {
+				return vizData.SpectrumData.Spectrum[:10]
+			}
+			return vizData.SpectrumData.Spectrum
+		}(), // First 10 bins
+	})
 }
 
 // handleGetAudioStats returns audio monitoring statistics

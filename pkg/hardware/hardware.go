@@ -350,11 +350,28 @@ func (h *HardwareManager) StartAudioInput() error {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
-	if !h.initialized || !h.config.EnableAudio || h.audio == nil {
-		return fmt.Errorf("audio not initialized")
+	log.Printf("DEBUG: StartAudioInput called - initialized:%v, enableAudio:%v, audio!=nil:%v",
+		h.initialized, h.config.EnableAudio, h.audio != nil)
+
+	if !h.initialized {
+		return fmt.Errorf("hardware manager not initialized")
+	}
+	if !h.config.EnableAudio {
+		return fmt.Errorf("audio disabled in configuration")
+	}
+	if h.audio == nil {
+		return fmt.Errorf("audio interface not available")
 	}
 
-	return h.audio.StartInput()
+	log.Printf("DEBUG: Starting audio input...")
+	err := h.audio.StartInput()
+	if err != nil {
+		log.Printf("DEBUG: Audio input start failed: %v", err)
+		return err
+	}
+
+	log.Printf("DEBUG: Audio input started successfully")
+	return nil
 }
 
 // StopAudioInput stops audio input capture

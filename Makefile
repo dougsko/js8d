@@ -23,21 +23,25 @@ build:
 	@echo "Building js8d..."
 	go build $(GOFLAGS) -o $(BINARY_NAME) $(MAIN_PACKAGE)
 
+
 # Build for different platforms
 .PHONY: build-linux-arm64
 build-linux-arm64:
 	@echo "Building for Linux ARM64 (Pi 4)..."
 	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -o $(BINARY_NAME)-linux-arm64 $(MAIN_PACKAGE)
 
+
 .PHONY: build-linux-arm
 build-linux-arm:
 	@echo "Building for Linux ARM (Pi 3)..."
 	GOOS=linux GOARCH=arm GOARM=7 go build $(GOFLAGS) -o $(BINARY_NAME)-linux-arm $(MAIN_PACKAGE)
 
+
 .PHONY: build-linux-arm6
 build-linux-arm6:
 	@echo "Building for Linux ARM6 (Pi Zero)..."
 	GOOS=linux GOARCH=arm GOARM=6 go build $(GOFLAGS) -o $(BINARY_NAME)-linux-arm6 $(MAIN_PACKAGE)
+
 
 .PHONY: build-all
 build-all: build build-linux-arm64 build-linux-arm build-linux-arm6

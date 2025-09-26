@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -96,6 +97,11 @@ func (m *AudioLevelMonitor) ProcessSamples(samples []int16) {
 
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
+	// Debug logging (limit to avoid spam)
+	if m.sampleCount%1000 == 0 {
+		log.Printf("AudioMonitor: Processing samples %d, buffer len=%d", m.sampleCount, len(samples))
+	}
 
 	// Calculate RMS and peak levels
 	m.calculateLevels(samples)

@@ -139,8 +139,11 @@ func (e *CoreEngine) Start() error {
 	}
 
 	// Start audio input for decoding
+	log.Printf("DEBUG: About to start audio input...")
 	if err := e.hardwareManager.StartAudioInput(); err != nil {
 		log.Printf("Warning: failed to start audio input: %v", err)
+	} else {
+		log.Printf("DEBUG: Audio input startup completed successfully")
 	}
 
 	// Start audio output for transmission
@@ -1422,9 +1425,17 @@ func (e *CoreEngine) processAudioSamples() {
 	// Get the audio input samples channel
 	audioSamples := e.hardwareManager.GetAudioInputSamples()
 	if audioSamples == nil {
-		log.Printf("Warning: no audio input samples available")
+		log.Printf("Warning: no audio input samples available - check audio configuration")
 		return
 	}
+
+	log.Printf("Audio sample processing ready - waiting for samples...")
+	sampleCount := 0
+
+	// Set up a debug timer to report if we're not getting samples
+	debugTicker := time.NewTicker(5 * time.Second)
+	defer debugTicker.Stop()
+	lastSampleCount := 0
 
 	for {
 		select {
@@ -1432,6 +1443,11 @@ func (e *CoreEngine) processAudioSamples() {
 			if !ok {
 				log.Printf("Audio samples channel closed, stopping processing")
 				return
+			}
+
+			sampleCount++
+			if sampleCount%100 == 0 {
+				log.Printf("Processed %d audio sample blocks (latest: %d samples)", sampleCount, len(samples))
 			}
 
 			// Process samples through the audio monitor
@@ -1466,6 +1482,21 @@ func (e *CoreEngine) processAudioSamples() {
 					log.Printf("DSP decode error: %v", err)
 				}
 			}
+
+		case <-debugTicker.C:
+			if sampleCount == lastSampleCount {
+				log.Printf("DEBUG: No audio samples received in last 5 seconds (total count: %d)", sampleCount)
+				// Check audio input status
+				audioSamples2 := e.hardwareManager.GetAudioInputSamples()
+				if audioSamples2 == nil {
+					log.Printf("DEBUG: Audio input samples channel is nil - audio may not be started")
+				} else {
+					log.Printf("DEBUG: Audio input samples channel exists but no data flowing")
+				}
+			} else {
+				log.Printf("DEBUG: Audio flowing normally (%d new samples)", sampleCount-lastSampleCount)
+			}
+			lastSampleCount = sampleCount
 
 		case <-time.After(1 * time.Second):
 			// Check if engine is still running

@@ -161,6 +161,7 @@ func (d *JS8Daemon) setupWebServer() error {
 		api.POST("/radio/test-ptt", d.handleTestPTT)
 		api.POST("/radio/test-ptt-off", d.handleTestPTTOff)
 		api.GET("/audio/stats", d.handleGetAudioStats)
+		api.GET("/audio/test", d.handleTestAudioData)
 		api.GET("/audio/devices", d.handleGetAudioDevices)
 		api.GET("/serial/devices", d.handleGetSerialDevices)
 	}

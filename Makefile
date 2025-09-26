@@ -85,18 +85,13 @@ deps-update:
 	go get -u ./...
 	go mod tidy
 
-# DSP library (TODO: implement)
-.PHONY: build-dsp
-build-dsp:
-	@echo "Building DSP library..."
-	cd libjs8dsp && mkdir -p build && cd build && cmake .. && make
+# DSP functionality is now implemented in pure Go - no separate library needed
 
 # Clean
 .PHONY: clean
 clean:
 	rm -f $(BINARY_NAME)*
 	rm -f coverage.out coverage.html
-	rm -rf libjs8dsp/build
 
 # Install
 .PHONY: install

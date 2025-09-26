@@ -20,6 +20,10 @@ type HardwareConfig struct {
 	AudioOutput    string
 	SampleRate     int
 	BufferSize     int
+	EnableRadio    bool
+	RadioModel     string
+	RadioDevice    string
+	RadioBaudRate  int
 }
 
 // HardwareManager manages all hardware interfaces
@@ -31,6 +35,7 @@ type HardwareManager struct {
 	gpio      GPIOInterface
 	oled      OLEDInterface
 	audio     AudioInterface
+	radio     RadioInterface
 	pttActive bool
 
 	// State
@@ -136,6 +141,27 @@ func (h *HardwareManager) Initialize() error {
 			h.config.AudioInput, h.config.AudioOutput, h.config.SampleRate)
 	}
 
+	// Initialize Radio if enabled
+	if h.config.EnableRadio {
+		log.Printf("Hardware: Initializing Radio...")
+
+		// Use Hamlib for radio control
+		radioConfig := RadioConfig{
+			Model:    h.config.RadioModel,
+			Device:   h.config.RadioDevice,
+			BaudRate: h.config.RadioBaudRate,
+			Enabled:  true,
+		}
+
+		// Use mock radio for testing - Hamlib CGO needs compatibility fixes
+		h.radio = NewMockRadio(radioConfig)
+		if err := h.radio.Initialize(); err != nil {
+			return fmt.Errorf("failed to initialize radio: %w", err)
+		}
+		log.Printf("Hardware: Radio initialized (%s on %s)",
+			h.config.RadioModel, h.config.RadioDevice)
+	}
+
 	h.initialized = true
 	log.Printf("Hardware: Hardware manager initialized successfully")
 	return nil
@@ -155,6 +181,13 @@ func (h *HardwareManager) Close() error {
 	// Turn off PTT if active
 	if h.pttActive {
 		h.setPTTLocked(false)
+	}
+
+	// Close Radio
+	if h.radio != nil {
+		if err := h.radio.Close(); err != nil {
+			log.Printf("Hardware: Error closing Radio: %v", err)
+		}
 	}
 
 	// Close Audio
@@ -376,6 +409,145 @@ func (h *HardwareManager) GetAudio() AudioInterface {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 	return h.audio
+}
+
+// GetRadio returns the radio interface for direct access
+func (h *HardwareManager) GetRadio() RadioInterface {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+	return h.radio
+}
+
+// SetRadioFrequency sets the radio frequency
+func (h *HardwareManager) SetRadioFrequency(freq int64) error {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.SetFrequency(freq)
+}
+
+// GetRadioFrequency gets the current radio frequency
+func (h *HardwareManager) GetRadioFrequency() (int64, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return 0, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetFrequency()
+}
+
+// SetRadioMode sets the radio mode and bandwidth
+func (h *HardwareManager) SetRadioMode(mode string, bandwidth int) error {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.SetMode(mode, bandwidth)
+}
+
+// GetRadioMode gets the current radio mode and bandwidth
+func (h *HardwareManager) GetRadioMode() (string, int, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return "", 0, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetMode()
+}
+
+// SetRadioPTT sets the radio PTT state
+func (h *HardwareManager) SetRadioPTT(state bool) error {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.SetPTT(state)
+}
+
+// GetRadioPTT gets the current radio PTT state
+func (h *HardwareManager) GetRadioPTT() (bool, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return false, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetPTT()
+}
+
+// GetRadioInfo gets radio information
+func (h *HardwareManager) GetRadioInfo() (RadioInfo, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return RadioInfo{}, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetRadioInfo()
+}
+
+// IsRadioConnected returns whether the radio is connected
+func (h *HardwareManager) IsRadioConnected() bool {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return false
+	}
+
+	return h.radio.IsConnected()
+}
+
+// GetRadioPowerLevel gets the radio power level
+func (h *HardwareManager) GetRadioPowerLevel() (float32, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return 0, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetPowerLevel()
+}
+
+// GetRadioSWRLevel gets the radio SWR level
+func (h *HardwareManager) GetRadioSWRLevel() (float32, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return 0, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetSWRLevel()
+}
+
+// GetRadioSignalLevel gets the radio signal level
+func (h *HardwareManager) GetRadioSignalLevel() (int, error) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if !h.initialized || !h.config.EnableRadio || h.radio == nil {
+		return 0, fmt.Errorf("radio not initialized")
+	}
+
+	return h.radio.GetSignalLevel()
 }
 
 // PlatformAudioConfig represents cross-platform audio configuration

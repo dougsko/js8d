@@ -1,0 +1,379 @@
+package hardware
+
+/*
+#cgo pkg-config: hamlib
+#include <hamlib/rig.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Helper function to get rig info as strings
+static void get_rig_info(RIG *rig, char **model, char **mfg, char **version) {
+    const struct rig_caps *caps = rig->caps;
+    if (caps) {
+        *model = (char*)caps->model_name;
+        *mfg = (char*)caps->mfg_name;
+        *version = (char*)caps->version;
+    } else {
+        *model = "Unknown";
+        *mfg = "Unknown";
+        *version = "Unknown";
+    }
+}
+
+// Helper function to convert rig mode to string
+static const char* mode_to_string(rmode_t mode) {
+    switch(mode) {
+        case RIG_MODE_USB: return "USB";
+        case RIG_MODE_LSB: return "LSB";
+        case RIG_MODE_CW: return "CW";
+        case RIG_MODE_RTTY: return "RTTY";
+        case RIG_MODE_PSK: return "PSK";
+        case RIG_MODE_PKTUSB: return "PKTUSB";
+        case RIG_MODE_PKTLSB: return "PKTLSB";
+        case RIG_MODE_FM: return "FM";
+        case RIG_MODE_AM: return "AM";
+        default: return "UNKNOWN";
+    }
+}
+
+// Helper function to convert string to rig mode
+static rmode_t string_to_mode(const char* mode) {
+    if (strcmp(mode, "USB") == 0) return RIG_MODE_USB;
+    if (strcmp(mode, "LSB") == 0) return RIG_MODE_LSB;
+    if (strcmp(mode, "CW") == 0) return RIG_MODE_CW;
+    if (strcmp(mode, "RTTY") == 0) return RIG_MODE_RTTY;
+    if (strcmp(mode, "PSK") == 0) return RIG_MODE_PSK;
+    if (strcmp(mode, "PKTUSB") == 0) return RIG_MODE_PKTUSB;
+    if (strcmp(mode, "PKTLSB") == 0) return RIG_MODE_PKTLSB;
+    if (strcmp(mode, "JT8") == 0) return RIG_MODE_PKTUSB; // Use PKTUSB for digital modes
+    if (strcmp(mode, "FM") == 0) return RIG_MODE_FM;
+    if (strcmp(mode, "AM") == 0) return RIG_MODE_AM;
+    return RIG_MODE_USB; // Default to USB
+}
+*/
+import "C"
+
+import (
+	"fmt"
+	"log"
+	"strconv"
+	"sync"
+	"unsafe"
+)
+
+// HamlibRadio implements RadioInterface using Hamlib
+type HamlibRadio struct {
+	config RadioConfig
+	rig    *C.RIG
+	mutex  sync.RWMutex
+
+	// Connection state
+	connected bool
+	model     C.rig_model_t
+}
+
+// NewHamlibRadio creates a new Hamlib radio interface
+func NewHamlibRadio(config RadioConfig) *HamlibRadio {
+	return &HamlibRadio{
+		config: config,
+	}
+}
+
+// Initialize initializes the Hamlib radio interface
+func (r *HamlibRadio) Initialize() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	log.Printf("Hamlib: Initializing radio control...")
+	log.Printf("Hamlib: Model: %s", r.config.Model)
+	log.Printf("Hamlib: Device: %s", r.config.Device)
+	log.Printf("Hamlib: Baud Rate: %d", r.config.BaudRate)
+
+	// Parse model ID (can be numeric or string)
+	var modelID C.rig_model_t
+	if num, err := strconv.Atoi(r.config.Model); err == nil {
+		// Numeric model ID
+		modelID = C.rig_model_t(num)
+	} else {
+		// Try to find model by name
+		// For now, default to a common model if string provided
+		log.Printf("Hamlib: Model name provided, using auto-detection")
+		modelID = C.RIG_MODEL_DUMMY // Will be replaced with proper name lookup
+	}
+
+	r.model = modelID
+
+	// Initialize rig
+	r.rig = C.rig_init(modelID)
+	if r.rig == nil {
+		return fmt.Errorf("failed to initialize rig model %s", r.config.Model)
+	}
+
+	// Set device path
+	if r.config.Device != "" {
+		devicePath := C.CString(r.config.Device)
+		defer C.free(unsafe.Pointer(devicePath))
+
+		// Set the device path
+		C.strncpy(&r.rig.state.rigport.pathname[0], devicePath, C.HAMLIB_FILPATHLEN-1)
+	}
+
+	// Set baud rate if specified
+	if r.config.BaudRate > 0 {
+		r.rig.state.rigport.parm.serial.rate = C.int(r.config.BaudRate)
+	}
+
+	// Open the rig connection
+	ret := C.rig_open(r.rig)
+	if ret != C.RIG_OK {
+		C.rig_cleanup(r.rig)
+		return fmt.Errorf("failed to open rig connection: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	r.connected = true
+	log.Printf("Hamlib: Radio connection established successfully")
+
+	// Get radio info for verification
+	if info, err := r.getRadioInfoLocked(); err == nil {
+		log.Printf("Hamlib: Connected to %s %s (version %s)",
+			info.Manufacturer, info.Model, info.Version)
+	}
+
+	return nil
+}
+
+// Close closes the radio connection
+func (r *HamlibRadio) Close() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if !r.connected {
+		return nil
+	}
+
+	log.Printf("Hamlib: Closing radio connection...")
+
+	if r.rig != nil {
+		C.rig_close(r.rig)
+		C.rig_cleanup(r.rig)
+		r.rig = nil
+	}
+
+	r.connected = false
+	log.Printf("Hamlib: Radio connection closed")
+	return nil
+}
+
+// SetFrequency sets the radio frequency in Hz
+func (r *HamlibRadio) SetFrequency(freq int64) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if !r.connected {
+		return fmt.Errorf("radio not connected")
+	}
+
+	log.Printf("Hamlib: Setting frequency to %d Hz (%.3f MHz)", freq, float64(freq)/1000000.0)
+
+	ret := C.rig_set_freq(r.rig, C.RIG_VFO_CURR, C.freq_t(freq))
+	if ret != C.RIG_OK {
+		return fmt.Errorf("failed to set frequency: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return nil
+}
+
+// GetFrequency gets the current radio frequency in Hz
+func (r *HamlibRadio) GetFrequency() (int64, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if !r.connected {
+		return 0, fmt.Errorf("radio not connected")
+	}
+
+	var freq C.freq_t
+	ret := C.rig_get_freq(r.rig, C.RIG_VFO_CURR, &freq)
+	if ret != C.RIG_OK {
+		return 0, fmt.Errorf("failed to get frequency: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return int64(freq), nil
+}
+
+// SetMode sets the radio mode and bandwidth
+func (r *HamlibRadio) SetMode(mode string, bandwidth int) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if !r.connected {
+		return fmt.Errorf("radio not connected")
+	}
+
+	log.Printf("Hamlib: Setting mode to %s with bandwidth %d Hz", mode, bandwidth)
+
+	modeStr := C.CString(mode)
+	defer C.free(unsafe.Pointer(modeStr))
+
+	rigMode := C.string_to_mode(modeStr)
+
+	ret := C.rig_set_mode(r.rig, C.RIG_VFO_CURR, rigMode, C.pbwidth_t(bandwidth))
+	if ret != C.RIG_OK {
+		return fmt.Errorf("failed to set mode: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return nil
+}
+
+// GetMode gets the current radio mode and bandwidth
+func (r *HamlibRadio) GetMode() (string, int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if !r.connected {
+		return "", 0, fmt.Errorf("radio not connected")
+	}
+
+	var mode C.rmode_t
+	var bandwidth C.pbwidth_t
+
+	ret := C.rig_get_mode(r.rig, C.RIG_VFO_CURR, &mode, &bandwidth)
+	if ret != C.RIG_OK {
+		return "", 0, fmt.Errorf("failed to get mode: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	modeStr := C.GoString(C.mode_to_string(mode))
+	return modeStr, int(bandwidth), nil
+}
+
+// SetPTT sets the PTT (Push-To-Talk) state
+func (r *HamlibRadio) SetPTT(state bool) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	if !r.connected {
+		return fmt.Errorf("radio not connected")
+	}
+
+	var ptt C.ptt_t
+	if state {
+		ptt = C.RIG_PTT_ON
+		log.Printf("Hamlib: PTT ON")
+	} else {
+		ptt = C.RIG_PTT_OFF
+		log.Printf("Hamlib: PTT OFF")
+	}
+
+	ret := C.rig_set_ptt(r.rig, C.RIG_VFO_CURR, ptt)
+	if ret != C.RIG_OK {
+		return fmt.Errorf("failed to set PTT: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return nil
+}
+
+// GetPTT gets the current PTT state
+func (r *HamlibRadio) GetPTT() (bool, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if !r.connected {
+		return false, fmt.Errorf("radio not connected")
+	}
+
+	var ptt C.ptt_t
+	ret := C.rig_get_ptt(r.rig, C.RIG_VFO_CURR, &ptt)
+	if ret != C.RIG_OK {
+		return false, fmt.Errorf("failed to get PTT: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return ptt == C.RIG_PTT_ON, nil
+}
+
+// GetRadioInfo gets radio information
+func (r *HamlibRadio) GetRadioInfo() (RadioInfo, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	return r.getRadioInfoLocked()
+}
+
+// getRadioInfoLocked gets radio info (must be called with lock held)
+func (r *HamlibRadio) getRadioInfoLocked() (RadioInfo, error) {
+	if !r.connected {
+		return RadioInfo{}, fmt.Errorf("radio not connected")
+	}
+
+	var model, mfg, version *C.char
+	C.get_rig_info(r.rig, &model, &mfg, &version)
+
+	info := RadioInfo{
+		Model:        C.GoString(model),
+		Manufacturer: C.GoString(mfg),
+		Version:      C.GoString(version),
+		Capabilities: []string{}, // TODO: Add capability detection
+	}
+
+	return info, nil
+}
+
+// IsConnected returns whether the radio is connected
+func (r *HamlibRadio) IsConnected() bool {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	return r.connected
+}
+
+// GetPowerLevel gets the current power level (0.0-1.0)
+func (r *HamlibRadio) GetPowerLevel() (float32, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if !r.connected {
+		return 0, fmt.Errorf("radio not connected")
+	}
+
+	var power C.value_t
+	ret := C.rig_get_level(r.rig, C.RIG_VFO_CURR, C.RIG_LEVEL_RFPOWER, &power)
+	if ret != C.RIG_OK {
+		return 0, fmt.Errorf("failed to get power level: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return float32(power.f), nil
+}
+
+// GetSWRLevel gets the current SWR level
+func (r *HamlibRadio) GetSWRLevel() (float32, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if !r.connected {
+		return 0, fmt.Errorf("radio not connected")
+	}
+
+	var swr C.value_t
+	ret := C.rig_get_level(r.rig, C.RIG_VFO_CURR, C.RIG_LEVEL_SWR, &swr)
+	if ret != C.RIG_OK {
+		return 0, fmt.Errorf("failed to get SWR level: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return float32(swr.f), nil
+}
+
+// GetSignalLevel gets the current signal level in dBm
+func (r *HamlibRadio) GetSignalLevel() (int, error) {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+
+	if !r.connected {
+		return 0, fmt.Errorf("radio not connected")
+	}
+
+	var signal C.value_t
+	ret := C.rig_get_level(r.rig, C.RIG_VFO_CURR, C.RIG_LEVEL_STRENGTH, &signal)
+	if ret != C.RIG_OK {
+		return 0, fmt.Errorf("failed to get signal level: %s", C.GoString(C.rigerror(ret)))
+	}
+
+	return int(signal.i), nil
+}

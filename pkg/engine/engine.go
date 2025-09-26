@@ -58,6 +58,10 @@ func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
 		AudioOutput:    cfg.Audio.OutputDevice,
 		SampleRate:     cfg.Audio.SampleRate,
 		BufferSize:     cfg.Audio.BufferSize,
+		EnableRadio:    cfg.Radio.Device != "", // Enable radio if device is specified
+		RadioModel:     cfg.Radio.Model,
+		RadioDevice:    cfg.Radio.Device,
+		RadioBaudRate:  cfg.Radio.BaudRate,
 	}
 
 	// Set defaults if not specified
@@ -72,6 +76,9 @@ func NewCoreEngine(cfg *config.Config, socketPath string) *CoreEngine {
 	}
 	if hardwareConfig.OLEDHeight == 0 {
 		hardwareConfig.OLEDHeight = 64
+	}
+	if hardwareConfig.RadioBaudRate == 0 {
+		hardwareConfig.RadioBaudRate = 4800 // Default radio baud rate
 	}
 
 	return &CoreEngine{
@@ -739,4 +746,109 @@ func (e *CoreEngine) sendHeartbeat() {
 	default:
 		log.Printf("TX queue full, dropping heartbeat")
 	}
+}
+
+// SetRadioFrequency sets the radio frequency and updates engine state
+func (e *CoreEngine) SetRadioFrequency(freq int64) error {
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	// Set radio frequency
+	if err := e.hardwareManager.SetRadioFrequency(freq); err != nil {
+		return fmt.Errorf("failed to set radio frequency: %w", err)
+	}
+
+	// Update engine frequency state
+	e.frequency = int(freq)
+	log.Printf("Engine: Radio frequency set to %.3f MHz", float64(freq)/1000000.0)
+	return nil
+}
+
+// GetRadioFrequency gets the current radio frequency
+func (e *CoreEngine) GetRadioFrequency() (int64, error) {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	return e.hardwareManager.GetRadioFrequency()
+}
+
+// SetRadioMode sets the radio mode for JS8 operation
+func (e *CoreEngine) SetRadioMode(mode string, bandwidth int) error {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	return e.hardwareManager.SetRadioMode(mode, bandwidth)
+}
+
+// EnablePTT enables PTT for transmission
+func (e *CoreEngine) EnablePTT() error {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	// Set both GPIO and radio PTT
+	if err := e.hardwareManager.SetPTT(true); err != nil {
+		log.Printf("Warning: GPIO PTT failed: %v", err)
+	}
+
+	if err := e.hardwareManager.SetRadioPTT(true); err != nil {
+		return fmt.Errorf("failed to enable radio PTT: %w", err)
+	}
+
+	log.Printf("Engine: PTT enabled")
+	return nil
+}
+
+// DisablePTT disables PTT after transmission
+func (e *CoreEngine) DisablePTT() error {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	// Disable both radio and GPIO PTT
+	if err := e.hardwareManager.SetRadioPTT(false); err != nil {
+		log.Printf("Warning: Radio PTT disable failed: %v", err)
+	}
+
+	if err := e.hardwareManager.SetPTT(false); err != nil {
+		log.Printf("Warning: GPIO PTT disable failed: %v", err)
+	}
+
+	log.Printf("Engine: PTT disabled")
+	return nil
+}
+
+// GetRadioStatus returns radio connection and status information
+func (e *CoreEngine) GetRadioStatus() map[string]interface{} {
+	e.mutex.RLock()
+	defer e.mutex.RUnlock()
+
+	status := map[string]interface{}{
+		"connected": e.hardwareManager.IsRadioConnected(),
+	}
+
+	if freq, err := e.hardwareManager.GetRadioFrequency(); err == nil {
+		status["frequency"] = freq
+	}
+
+	if mode, bandwidth, err := e.hardwareManager.GetRadioMode(); err == nil {
+		status["mode"] = mode
+		status["bandwidth"] = bandwidth
+	}
+
+	if ptt, err := e.hardwareManager.GetRadioPTT(); err == nil {
+		status["ptt"] = ptt
+	}
+
+	if power, err := e.hardwareManager.GetRadioPowerLevel(); err == nil {
+		status["power"] = power
+	}
+
+	if swr, err := e.hardwareManager.GetRadioSWRLevel(); err == nil {
+		status["swr"] = swr
+	}
+
+	if signal, err := e.hardwareManager.GetRadioSignalLevel(); err == nil {
+		status["signal"] = signal
+	}
+
+	return status
 }

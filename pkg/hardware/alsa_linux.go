@@ -5,6 +5,8 @@ package hardware
 import (
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"

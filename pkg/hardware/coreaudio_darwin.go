@@ -314,6 +314,107 @@ int readInputSamples(int16_t* buffer, int maxSamples) {
 int writeOutputSamples(int16_t* buffer, int samples) {
     return writeAudioBuffer(&outputBuffer, buffer, samples);
 }
+
+// Audio device enumeration functions
+typedef struct {
+    AudioDeviceID deviceID;
+    char name[256];
+    int isInput;
+    int isOutput;
+} AudioDeviceInfo;
+
+// Get list of audio devices
+int getAudioDevices(AudioDeviceInfo* devices, int maxDevices) {
+    AudioObjectPropertyAddress propertyAddress = {
+        kAudioHardwarePropertyDevices,
+        kAudioObjectPropertyScopeGlobal,
+        kAudioObjectPropertyElementMain
+    };
+
+    UInt32 dataSize = 0;
+    OSStatus status = AudioObjectGetPropertyDataSize(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize);
+    if (status != noErr) return -1;
+
+    int deviceCount = dataSize / sizeof(AudioDeviceID);
+    if (deviceCount > maxDevices) deviceCount = maxDevices;
+
+    AudioDeviceID* deviceIDs = malloc(dataSize);
+    status = AudioObjectGetPropertyData(kAudioObjectSystemObject, &propertyAddress, 0, NULL, &dataSize, deviceIDs);
+    if (status != noErr) {
+        free(deviceIDs);
+        return -1;
+    }
+
+    int validDevices = 0;
+    for (int i = 0; i < deviceCount && validDevices < maxDevices; i++) {
+        AudioDeviceID deviceID = deviceIDs[i];
+
+        // Get device name
+        propertyAddress.mSelector = kAudioDevicePropertyDeviceNameCFString;
+        propertyAddress.mScope = kAudioObjectPropertyScopeGlobal;
+        CFStringRef deviceName = NULL;
+        dataSize = sizeof(CFStringRef);
+
+        status = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, NULL, &dataSize, &deviceName);
+        if (status != noErr) continue;
+
+        // Convert CFString to C string
+        if (!CFStringGetCString(deviceName, devices[validDevices].name, sizeof(devices[validDevices].name), kCFStringEncodingUTF8)) {
+            CFRelease(deviceName);
+            continue;
+        }
+        CFRelease(deviceName);
+
+        // Initialize capabilities
+        devices[validDevices].isInput = 0;
+        devices[validDevices].isOutput = 0;
+
+        // Check if device has input streams
+        propertyAddress.mSelector = kAudioDevicePropertyStreamConfiguration;
+        propertyAddress.mScope = kAudioDevicePropertyScopeInput;
+        dataSize = 0;
+        status = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, NULL, &dataSize);
+        if (status == noErr && dataSize > 0) {
+            AudioBufferList* bufferList = (AudioBufferList*)malloc(dataSize);
+            status = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, NULL, &dataSize, bufferList);
+            if (status == noErr && bufferList->mNumberBuffers > 0) {
+                // Check if any buffer has channels
+                for (UInt32 i = 0; i < bufferList->mNumberBuffers; i++) {
+                    if (bufferList->mBuffers[i].mNumberChannels > 0) {
+                        devices[validDevices].isInput = 1;
+                        break;
+                    }
+                }
+            }
+            free(bufferList);
+        }
+
+        // Check if device has output streams
+        propertyAddress.mScope = kAudioDevicePropertyScopeOutput;
+        dataSize = 0;
+        status = AudioObjectGetPropertyDataSize(deviceID, &propertyAddress, 0, NULL, &dataSize);
+        if (status == noErr && dataSize > 0) {
+            AudioBufferList* bufferList = (AudioBufferList*)malloc(dataSize);
+            status = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, NULL, &dataSize, bufferList);
+            if (status == noErr && bufferList->mNumberBuffers > 0) {
+                // Check if any buffer has channels
+                for (UInt32 i = 0; i < bufferList->mNumberBuffers; i++) {
+                    if (bufferList->mBuffers[i].mNumberChannels > 0) {
+                        devices[validDevices].isOutput = 1;
+                        break;
+                    }
+                }
+            }
+            free(bufferList);
+        }
+
+        devices[validDevices].deviceID = deviceID;
+        validDevices++;
+    }
+
+    free(deviceIDs);
+    return validDevices;
+}
 */
 import "C"
 
@@ -606,4 +707,45 @@ func (a *CoreAudio) IsRecording() bool {
 // IsPlaying returns whether audio output is active
 func (a *CoreAudio) IsPlaying() bool {
 	return a.isPlaying()
+}
+
+// AudioDevice represents an audio device
+type AudioDevice struct {
+	ID       uint32 `json:"id"`
+	Name     string `json:"name"`
+	IsInput  bool   `json:"is_input"`
+	IsOutput bool   `json:"is_output"`
+}
+
+// GetAudioDevices returns a list of available audio devices
+func GetAudioDevices() ([]AudioDevice, error) {
+	const maxDevices = 64
+	devices := make([]C.AudioDeviceInfo, maxDevices)
+
+	log.Printf("CoreAudio: Calling C.getAudioDevices...")
+	count := int(C.getAudioDevices(&devices[0], C.int(maxDevices)))
+	log.Printf("CoreAudio: C.getAudioDevices returned count=%d", count)
+
+	if count < 0 {
+		return nil, fmt.Errorf("failed to enumerate audio devices (returned %d)", count)
+	}
+
+	result := make([]AudioDevice, count)
+	for i := 0; i < count; i++ {
+		name := C.GoString(&devices[i].name[0])
+		isInput := devices[i].isInput != 0
+		isOutput := devices[i].isOutput != 0
+
+		log.Printf("CoreAudio: Device %d: %s (input:%v, output:%v)", i, name, isInput, isOutput)
+
+		result[i] = AudioDevice{
+			ID:       uint32(devices[i].deviceID),
+			Name:     name,
+			IsInput:  isInput,
+			IsOutput: isOutput,
+		}
+	}
+
+	log.Printf("CoreAudio: Returning %d devices", len(result))
+	return result, nil
 }

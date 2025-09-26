@@ -142,7 +142,7 @@ func (h *HardwareManager) Initialize() error {
 			h.config.AudioInput, h.config.AudioOutput, h.config.SampleRate)
 	}
 
-	// Initialize Radio if enabled
+	// Initialize Radio if enabled (non-fatal - daemon continues without radio if connection fails)
 	if h.config.EnableRadio {
 		log.Printf("Hardware: Initializing Radio...")
 
@@ -162,11 +162,15 @@ func (h *HardwareManager) Initialize() error {
 			log.Printf("Hardware: Using mock radio for testing")
 			h.radio = NewMockRadio(radioConfig)
 		}
+
 		if err := h.radio.Initialize(); err != nil {
-			return fmt.Errorf("failed to initialize radio: %w", err)
+			log.Printf("Hardware: Warning - failed to initialize radio: %v", err)
+			log.Printf("Hardware: Daemon will continue without radio connection - configure radio in web UI")
+			h.radio = nil // Clear the radio interface so methods know it's not available
+		} else {
+			log.Printf("Hardware: Radio initialized (%s on %s)",
+				h.config.RadioModel, h.config.RadioDevice)
 		}
-		log.Printf("Hardware: Radio initialized (%s on %s)",
-			h.config.RadioModel, h.config.RadioDevice)
 	}
 
 	h.initialized = true
@@ -555,6 +559,73 @@ func (h *HardwareManager) GetRadioSignalLevel() (int, error) {
 	}
 
 	return h.radio.GetSignalLevel()
+}
+
+// RetryRadioConnection attempts to reinitialize the radio connection
+// This can be called after radio configuration changes
+func (h *HardwareManager) RetryRadioConnection() error {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	if !h.initialized || !h.config.EnableRadio {
+		return fmt.Errorf("hardware manager not initialized or radio not enabled")
+	}
+
+	// Close existing radio connection if any
+	if h.radio != nil {
+		log.Printf("Hardware: Closing existing radio connection...")
+		if err := h.radio.Close(); err != nil {
+			log.Printf("Hardware: Warning - error closing radio: %v", err)
+		}
+		h.radio = nil
+	}
+
+	log.Printf("Hardware: Attempting to reconnect radio...")
+
+	// Create new radio configuration
+	radioConfig := RadioConfig{
+		Model:    h.config.RadioModel,
+		Device:   h.config.RadioDevice,
+		BaudRate: h.config.RadioBaudRate,
+		Enabled:  true,
+	}
+
+	// Choose between hamlib and mock radio based on configuration
+	if h.config.UseHamlib {
+		log.Printf("Hardware: Using Hamlib for radio control")
+		h.radio = NewHamlibRadio(radioConfig)
+	} else {
+		log.Printf("Hardware: Using mock radio for testing")
+		h.radio = NewMockRadio(radioConfig)
+	}
+
+	if err := h.radio.Initialize(); err != nil {
+		log.Printf("Hardware: Radio reconnection failed: %v", err)
+		h.radio = nil
+		return fmt.Errorf("failed to reconnect radio: %w", err)
+	}
+
+	log.Printf("Hardware: Radio reconnected successfully (%s on %s)",
+		h.config.RadioModel, h.config.RadioDevice)
+	return nil
+}
+
+// UpdateRadioConfig updates the radio configuration and attempts reconnection
+func (h *HardwareManager) UpdateRadioConfig(model, device string, baudRate int, useHamlib bool) error {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	// Update configuration
+	h.config.RadioModel = model
+	h.config.RadioDevice = device
+	h.config.RadioBaudRate = baudRate
+	h.config.UseHamlib = useHamlib
+	h.config.EnableRadio = true
+
+	log.Printf("Hardware: Radio configuration updated: Model=%s, Device=%s, Baud=%d, UseHamlib=%t",
+		model, device, baudRate, useHamlib)
+
+	return nil
 }
 
 // PlatformAudioConfig represents cross-platform audio configuration

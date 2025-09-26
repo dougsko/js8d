@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/js8call/js8d/pkg/client"
+	"github.com/dougsko/js8d/pkg/client"
 )
 
 var (

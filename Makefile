@@ -93,7 +93,7 @@ clean:
 	rm -f $(BINARY_NAME)*
 	rm -f coverage.out coverage.html
 
-# Install
+# Simple install (development)
 .PHONY: install
 install: build
 	sudo cp $(BINARY_NAME) /usr/local/bin/
@@ -102,11 +102,23 @@ install: build
 	@echo "js8d installed to /usr/local/bin/"
 	@echo "Example config copied to /etc/js8d/config.example.yaml"
 
-# Uninstall
+# Production install with systemd service
+.PHONY: install-service
+install-service: build
+	@echo "Installing js8d as systemd service..."
+	./scripts/install.sh
+
+# Uninstall simple installation
 .PHONY: uninstall
 uninstall:
 	sudo rm -f /usr/local/bin/$(BINARY_NAME)
 	@echo "js8d uninstalled"
+
+# Uninstall systemd service installation
+.PHONY: uninstall-service
+uninstall-service:
+	@echo "Uninstalling js8d systemd service..."
+	sudo ./scripts/uninstall.sh
 
 # Docker targets
 .PHONY: docker-build
@@ -131,5 +143,8 @@ help:
 	@echo "  vet            - Run go vet"
 	@echo "  deps           - Download dependencies"
 	@echo "  clean          - Clean build artifacts"
-	@echo "  install        - Install to system"
+	@echo "  install        - Simple install to system"
+	@echo "  install-service - Production install with systemd service"
+	@echo "  uninstall      - Remove simple installation"
+	@echo "  uninstall-service - Remove systemd service installation"
 	@echo "  help           - Show this help"

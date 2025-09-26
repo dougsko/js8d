@@ -3,6 +3,8 @@
 class SettingsManager {
     constructor() {
         this.config = {};
+        this.autoSaveTimeout = null;
+        this.autoSaveDelay = 1000; // 1 second delay after last change
         this.init();
     }
 
@@ -32,12 +34,123 @@ class SettingsManager {
             this.testPTT();
         });
 
+        document.getElementById('retry-radio-connection').addEventListener('click', () => {
+            this.retryRadioConnection();
+        });
+
         // File select button
         const fileSelectButton = document.querySelector('.file-select-button');
         if (fileSelectButton) {
             fileSelectButton.addEventListener('click', () => {
                 this.selectSaveDirectory();
             });
+        }
+
+        // Storage statistics buttons
+        document.getElementById('refresh-stats').addEventListener('click', () => {
+            this.loadStorageStats();
+        });
+
+        document.getElementById('cleanup-messages').addEventListener('click', () => {
+            this.cleanupMessages();
+        });
+
+        // Hamlib dependency handling
+        document.getElementById('radio-use-hamlib').addEventListener('change', (e) => {
+            this.handleHamlibChange(e.target.checked);
+        });
+
+        // Serial device changes no longer need to sync PTT port since they're the same
+
+        // Auto-save functionality - setup after DOM is loaded
+        this.setupAutoSave();
+    }
+
+    setupAutoSave() {
+        // Wait for form to be populated before setting up auto-save
+        setTimeout(() => {
+            const form = document.getElementById('config-form');
+            if (form) {
+                // Add change listeners to all form elements
+                const inputs = form.querySelectorAll('input, select, textarea');
+                inputs.forEach(input => {
+                    // Skip test buttons and file select buttons
+                    if (input.type === 'button' || input.classList.contains('test-button') ||
+                        input.classList.contains('file-select-button')) {
+                        return;
+                    }
+
+                    const events = ['change', 'input'];
+                    events.forEach(eventType => {
+                        input.addEventListener(eventType, () => {
+                            this.scheduleAutoSave();
+                        });
+                    });
+                });
+
+                console.log('Auto-save enabled for', inputs.length, 'form elements');
+            }
+        }, 500);
+    }
+
+    scheduleAutoSave() {
+        // Clear existing timeout
+        if (this.autoSaveTimeout) {
+            clearTimeout(this.autoSaveTimeout);
+        }
+
+        // Schedule new save
+        this.autoSaveTimeout = setTimeout(() => {
+            this.autoSaveAndReload();
+        }, this.autoSaveDelay);
+    }
+
+    async autoSaveAndReload() {
+        try {
+            this.showStatus('Auto-saving configuration...', 'info');
+
+            // Save configuration
+            const configData = this.collectFormData();
+            const saveResponse = await fetch('/api/v1/config', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(configData),
+            });
+
+            if (!saveResponse.ok) {
+                const error = await saveResponse.json();
+                this.showStatus(`Auto-save failed: ${error.error}`, 'error');
+                return;
+            }
+
+            // Reload daemon configuration
+            const reloadResponse = await fetch('/api/v1/config/reload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (reloadResponse.ok) {
+                const data = await reloadResponse.json();
+                if (data.warning) {
+                    this.showStatus(`Auto-saved with warning: ${data.warning}`, 'error');
+                } else {
+                    this.showStatus('Configuration auto-saved and reloaded', 'success');
+                }
+
+                // Update local config
+                this.config = configData;
+            } else {
+                const error = await reloadResponse.json();
+                this.showStatus(`Auto-save succeeded, reload failed: ${error.error}`, 'error');
+            }
+
+        } catch (error) {
+            console.error('Auto-save failed:', error);
+            this.showStatus('Auto-save failed: Network error', 'error');
         }
     }
 
@@ -49,12 +162,201 @@ class SettingsManager {
             }
 
             this.config = await response.json();
+            await this.loadSerialDevices();
+            await this.loadAudioDevices();
             this.populateForm();
+            this.loadStorageStats();
             this.showStatus('Configuration loaded successfully', 'success');
 
         } catch (error) {
             console.error('Failed to load config:', error);
             this.showStatus('Failed to load configuration', 'error');
+        }
+    }
+
+    async loadSerialDevices() {
+        try {
+            const response = await fetch('/api/v1/serial/devices');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            const deviceSelect = document.getElementById('radio-device');
+
+            // Clear existing options
+            deviceSelect.innerHTML = '';
+
+            // Add an empty option
+            const emptyOption = document.createElement('option');
+            emptyOption.value = '';
+            emptyOption.textContent = 'Select a serial device...';
+            deviceSelect.appendChild(emptyOption);
+
+            // Add serial devices
+            if (data.serial_devices && data.serial_devices.length > 0) {
+                data.serial_devices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device;
+                    option.textContent = device;
+                    deviceSelect.appendChild(option);
+                });
+            } else {
+                // Add default devices if none found
+                const defaultDevices = [
+                    '/dev/ttyUSBmodem14201',
+                    '/dev/ttyUSB0',
+                    '/dev/ttyUSB1',
+                    '/dev/ttyACM0',
+                    '/dev/ttyACM1'
+                ];
+
+                defaultDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device;
+                    option.textContent = device;
+                    deviceSelect.appendChild(option);
+                });
+            }
+
+        } catch (error) {
+            console.error('Failed to load serial devices:', error);
+            // Fall back to showing common devices
+            const deviceSelect = document.getElementById('radio-device');
+            deviceSelect.innerHTML = '';
+
+            const errorOption = document.createElement('option');
+            errorOption.value = '';
+            errorOption.textContent = 'Error loading devices';
+            deviceSelect.appendChild(errorOption);
+
+            // Add default devices as fallback
+            const defaultDevices = [
+                '/dev/ttyUSBmodem14201',
+                '/dev/ttyUSB0',
+                '/dev/ttyUSB1',
+                '/dev/ttyACM0',
+                '/dev/ttyACM1'
+            ];
+
+            defaultDevices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device;
+                option.textContent = device;
+                deviceSelect.appendChild(option);
+            });
+        }
+    }
+
+    async loadAudioDevices() {
+        try {
+            const response = await fetch('/api/v1/audio/devices');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            // Update input device dropdown
+            const inputSelect = document.getElementById('audio-input');
+            if (inputSelect) {
+                // Keep the default option and clear the rest
+                const defaultOption = inputSelect.querySelector('option[value="default"]');
+                inputSelect.innerHTML = '';
+                if (defaultOption) {
+                    inputSelect.appendChild(defaultOption);
+                }
+
+                // Add enumerated input devices
+                if (data.input_devices && data.input_devices.length > 0) {
+                    data.input_devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device;
+                        option.textContent = device;
+                        inputSelect.appendChild(option);
+                    });
+                }
+            }
+
+            // Update output device dropdown
+            const outputSelect = document.getElementById('audio-output');
+            if (outputSelect) {
+                // Keep the default option and clear the rest
+                const defaultOption = outputSelect.querySelector('option[value="default"]');
+                outputSelect.innerHTML = '';
+                if (defaultOption) {
+                    outputSelect.appendChild(defaultOption);
+                }
+
+                // Add enumerated output devices
+                if (data.output_devices && data.output_devices.length > 0) {
+                    data.output_devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device;
+                        option.textContent = device;
+                        outputSelect.appendChild(option);
+                    });
+                }
+            }
+
+            // Update notification output dropdown
+            const notificationSelect = document.getElementById('audio-notification-output');
+            if (notificationSelect) {
+                // Clear all options for notification dropdown
+                notificationSelect.innerHTML = '';
+
+                // Add enumerated output devices (since notification uses output devices)
+                if (data.output_devices && data.output_devices.length > 0) {
+                    data.output_devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device;
+                        option.textContent = device;
+                        notificationSelect.appendChild(option);
+                    });
+                }
+            }
+
+            console.log('Audio devices loaded:', data);
+
+        } catch (error) {
+            console.error('Failed to load audio devices:', error);
+
+            // Fall back to static devices
+            const staticInputDevices = ['Built-in Microphone', 'USB Audio Device', 'IC-7300', 'External Microphone'];
+            const staticOutputDevices = ['Built-in Output', 'USB Audio Device', 'IC-7300', 'External Speakers'];
+
+            // Update input select with fallback
+            const inputSelect = document.getElementById('audio-input');
+            if (inputSelect && inputSelect.children.length <= 1) {
+                staticInputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device;
+                    option.textContent = device;
+                    inputSelect.appendChild(option);
+                });
+            }
+
+            // Update output select with fallback
+            const outputSelect = document.getElementById('audio-output');
+            if (outputSelect && outputSelect.children.length <= 1) {
+                staticOutputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device;
+                    option.textContent = device;
+                    outputSelect.appendChild(option);
+                });
+            }
+
+            // Update notification select with fallback
+            const notificationSelect = document.getElementById('audio-notification-output');
+            if (notificationSelect && notificationSelect.children.length === 0) {
+                staticOutputDevices.forEach(device => {
+                    const option = document.createElement('option');
+                    option.value = device;
+                    option.textContent = device;
+                    notificationSelect.appendChild(option);
+                });
+            }
         }
     }
 
@@ -80,8 +382,11 @@ class SettingsManager {
 
         // Radio Configuration
         this.setFormValue('radio-use-hamlib', this.config.Radio?.UseHamlib || false);
-        this.setFormValue('radio-model', this.config.Radio?.Model || '10001');
+        this.setFormValue('radio-model', this.config.Radio?.Model || '1');
         this.setFormValue('radio-poll-interval', this.config.Radio?.PollInterval || 1000);
+
+        // Handle Hamlib dependency (do this after setting the values)
+        this.handleHamlibChange(this.config.Radio?.UseHamlib || false);
 
         // CAT Control
         this.setFormValue('radio-device', this.config.Radio?.Device || '/dev/ttyUSBmodem14201');
@@ -94,7 +399,6 @@ class SettingsManager {
 
         // PTT Configuration
         this.setRadioValue('radio.ptt_method', this.config.Radio?.PTTMethod || 'cat');
-        this.setFormValue('radio-ptt-port', this.config.Radio?.PTTPort || '/dev/ttyUSBmodem14201');
         this.setRadioValue('radio.mode', this.config.Radio?.Mode || 'data');
         this.setRadioValue('radio.tx_audio_source', this.config.Radio?.TxAudioSource || 'front');
         this.setRadioValue('radio.split_operation', this.config.Radio?.SplitOperation || 'rig');
@@ -162,7 +466,7 @@ class SettingsManager {
         } else if (element.tagName === 'SELECT') {
             // Check if this select contains numeric values
             const numericSelects = [
-                'audio-sample-rate', 'audio-buffer-size', 'radio-baud-rate',
+                'audio-sample-rate', 'audio-buffer-size', 'radio-baud-rate', 'radio-poll-interval',
                 'web-port', 'hardware-ptt-gpio-pin', 'hardware-status-led-pin',
                 'hardware-oled-width', 'hardware-oled-height'
             ];
@@ -207,7 +511,7 @@ class SettingsManager {
                 dtr: this.getFormValue('radio-dtr'),
                 rts: this.getFormValue('radio-rts'),
                 ptt_method: this.getRadioValue('radio.ptt_method'),
-                ptt_port: this.getFormValue('radio-ptt-port'),
+                ptt_port: this.getFormValue('radio-device'), // Use serial device for PTT
                 mode: this.getRadioValue('radio.mode'),
                 tx_audio_source: this.getRadioValue('radio.tx_audio_source'),
                 split_operation: this.getRadioValue('radio.split_operation'),
@@ -274,7 +578,13 @@ class SettingsManager {
 
             if (response.ok) {
                 const data = await response.json();
-                this.showStatus('Daemon configuration reloaded successfully', 'success');
+
+                // Check for warnings
+                if (data.warning) {
+                    this.showStatus(`Reloaded with warning: ${data.warning}`, 'error');
+                } else {
+                    this.showStatus('Daemon configuration reloaded successfully', 'success');
+                }
 
                 // Show changes if any
                 if (data.old_callsign !== data.new_callsign || data.old_grid !== data.new_grid) {
@@ -283,7 +593,7 @@ class SettingsManager {
                             `Station updated: ${data.old_callsign} (${data.old_grid}) → ${data.new_callsign} (${data.new_grid})`,
                             'info'
                         );
-                    }, 2000);
+                    }, 3000);
                 }
             } else {
                 const error = await response.json();
@@ -314,12 +624,17 @@ class SettingsManager {
         const button = document.getElementById('test-cat');
         const originalText = button.textContent;
 
+        // Clear any existing timeouts
+        if (this.catTimeout) {
+            clearTimeout(this.catTimeout);
+            this.catTimeout = null;
+        }
+
         try {
             button.textContent = 'Testing...';
+            button.classList.remove('success', 'error');
             button.classList.add('testing');
             button.disabled = true;
-
-            this.showStatus('Testing CAT connection...', 'info');
 
             const response = await fetch('/api/v1/radio/test-cat', {
                 method: 'POST',
@@ -335,18 +650,60 @@ class SettingsManager {
 
             if (response.ok) {
                 const data = await response.json();
-                this.showStatus(`CAT Test Success: ${data.message}`, 'success');
+                button.classList.remove('testing', 'error');
+                button.classList.add('success');
+                button.textContent = 'CAT OK';
+
+                // Reset to original state after 3 seconds
+                this.catTimeout = setTimeout(() => {
+                    if (button.classList.contains('success')) {
+                        button.classList.remove('success');
+                        button.textContent = originalText;
+                    }
+                    this.catTimeout = null;
+                }, 3000);
             } else {
                 const error = await response.json();
-                this.showStatus(`CAT Test Failed: ${error.error}`, 'error');
+                button.classList.remove('testing', 'success');
+                button.classList.add('error');
+                button.textContent = 'CAT Failed';
+
+                // Show detailed error in console for debugging
+                let errorMsg = error.error || 'Unknown error';
+                if (errorMsg.includes('Communication timed out')) {
+                    errorMsg += ' - Check serial port, baud rate, and radio model';
+                } else if (errorMsg.includes('IO error')) {
+                    errorMsg += ' - Verify serial device and connections';
+                } else if (errorMsg.includes('failed to open')) {
+                    errorMsg += ' - Check if device exists and is not in use';
+                }
+                console.log('CAT Test Error:', errorMsg);
+
+                // Reset to original state after 5 seconds
+                this.catTimeout = setTimeout(() => {
+                    if (button.classList.contains('error')) {
+                        button.classList.remove('error');
+                        button.textContent = originalText;
+                    }
+                    this.catTimeout = null;
+                }, 5000);
             }
 
         } catch (error) {
             console.error('CAT test failed:', error);
-            this.showStatus('CAT test failed: Network error', 'error');
+            button.classList.remove('testing', 'success');
+            button.classList.add('error');
+            button.textContent = 'CAT Failed';
+
+            // Reset to original state after 5 seconds
+            this.catTimeout = setTimeout(() => {
+                if (button.classList.contains('error')) {
+                    button.classList.remove('error');
+                    button.textContent = originalText;
+                }
+                this.catTimeout = null;
+            }, 5000);
         } finally {
-            button.textContent = originalText;
-            button.classList.remove('testing');
             button.disabled = false;
         }
     }
@@ -355,36 +712,134 @@ class SettingsManager {
         const button = document.getElementById('test-ptt');
         const originalText = button.textContent;
 
+        // Check if we're currently in TX mode
+        if (button.classList.contains('tx-active')) {
+            // Turn off TX
+            try {
+                button.textContent = 'Turning off...';
+                button.disabled = true;
+
+                const response = await fetch('/api/v1/radio/test-ptt-off', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                if (response.ok) {
+                    button.classList.remove('tx-active', 'error');
+                    button.textContent = originalText;
+                    console.log('PTT turned off successfully');
+                } else {
+                    button.classList.add('error');
+                    button.textContent = 'TX Error';
+                    console.error('Failed to turn off PTT');
+
+                    // Reset after 3 seconds but keep TX active
+                    setTimeout(() => {
+                        button.classList.remove('error');
+                        button.textContent = 'TX ON - Click to stop';
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('PTT off failed:', error);
+                button.classList.add('error');
+                button.textContent = 'TX Error';
+
+                // Reset after 3 seconds but keep TX active
+                setTimeout(() => {
+                    button.classList.remove('error');
+                    button.textContent = 'TX ON - Click to stop';
+                }, 3000);
+            } finally {
+                button.disabled = false;
+            }
+        } else {
+            // Turn on TX
+            try {
+                button.textContent = 'Testing...';
+                button.classList.remove('success', 'error', 'tx-active');
+                button.classList.add('testing');
+                button.disabled = true;
+
+                const response = await fetch('/api/v1/radio/test-ptt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        method: this.getRadioValue('radio.ptt_method'),
+                        port: this.getFormValue('radio-device'), // Use serial device for PTT
+                        tx_delay: 0.5  // Short delay for toggle mode
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    button.classList.remove('testing', 'error');
+                    button.classList.add('tx-active');
+                    button.textContent = 'TX ON - Click to stop';
+                    console.log('PTT activated successfully');
+                } else {
+                    const error = await response.json();
+                    button.classList.remove('testing', 'tx-active');
+                    button.classList.add('error');
+                    button.textContent = 'PTT Failed';
+                    console.log('PTT Test Error:', error.error);
+
+                    // Reset to original state after 5 seconds
+                    setTimeout(() => {
+                        button.classList.remove('error');
+                        button.textContent = originalText;
+                    }, 5000);
+                }
+
+            } catch (error) {
+                console.error('PTT test failed:', error);
+                button.classList.remove('testing', 'tx-active');
+                button.classList.add('error');
+                button.textContent = 'PTT Failed';
+
+                // Reset to original state after 5 seconds
+                setTimeout(() => {
+                    button.classList.remove('error');
+                    button.textContent = originalText;
+                }, 5000);
+            } finally {
+                button.disabled = false;
+            }
+        }
+    }
+
+    async retryRadioConnection() {
+        const button = document.getElementById('retry-radio-connection');
+        const originalText = button.textContent;
+
         try {
-            button.textContent = 'Testing...';
+            button.textContent = 'Retrying...';
             button.classList.add('testing');
             button.disabled = true;
 
-            this.showStatus('Testing PTT...', 'info');
+            this.showStatus('Attempting to reconnect radio...', 'info');
 
-            const response = await fetch('/api/v1/radio/test-ptt', {
+            const response = await fetch('/api/v1/radio/retry-connection', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    method: this.getRadioValue('radio.ptt_method'),
-                    port: this.getFormValue('radio-ptt-port'),
-                    tx_delay: this.getFormValue('radio-tx-delay')
-                })
             });
 
             if (response.ok) {
                 const data = await response.json();
-                this.showStatus(`PTT Test Success: ${data.message}`, 'success');
+                this.showStatus(`Radio Connection: ${data.message}`, 'success');
             } else {
                 const error = await response.json();
-                this.showStatus(`PTT Test Failed: ${error.error}`, 'error');
+                this.showStatus(`Radio Retry Failed: ${error.error}`, 'error');
             }
 
         } catch (error) {
-            console.error('PTT test failed:', error);
-            this.showStatus('PTT test failed: Network error', 'error');
+            console.error('Radio retry failed:', error);
+            this.showStatus('Radio retry failed: Network error', 'error');
         } finally {
             button.textContent = originalText;
             button.classList.remove('testing');
@@ -425,6 +880,103 @@ class SettingsManager {
         }
 
         return true;
+    }
+
+    async loadStorageStats() {
+        try {
+            const response = await fetch('/api/v1/messages/stats');
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const stats = await response.json();
+
+            // Update statistics display
+            document.getElementById('stat-total-messages').textContent = stats.total_messages || 0;
+            document.getElementById('stat-total-rx').textContent = stats.total_rx || 0;
+            document.getElementById('stat-total-tx').textContent = stats.total_tx || 0;
+
+            // Format last cleanup date
+            let cleanupText = 'Never';
+            if (stats.last_cleanup && stats.last_cleanup !== '0001-01-01T00:00:00Z') {
+                const cleanupDate = new Date(stats.last_cleanup);
+                cleanupText = cleanupDate.toLocaleDateString() + ' ' + cleanupDate.toLocaleTimeString();
+            }
+            document.getElementById('stat-last-cleanup').textContent = cleanupText;
+
+        } catch (error) {
+            console.error('Failed to load storage stats:', error);
+            // Set error indicators
+            const errorText = 'Error';
+            document.getElementById('stat-total-messages').textContent = errorText;
+            document.getElementById('stat-total-rx').textContent = errorText;
+            document.getElementById('stat-total-tx').textContent = errorText;
+            document.getElementById('stat-last-cleanup').textContent = errorText;
+        }
+    }
+
+    async cleanupMessages() {
+        if (!confirm('This will permanently delete old messages to free up space. Continue?')) {
+            return;
+        }
+
+        const button = document.getElementById('cleanup-messages');
+        const originalText = button.textContent;
+
+        try {
+            button.textContent = 'Cleaning...';
+            button.disabled = true;
+
+            this.showStatus('Cleaning up old messages...', 'info');
+
+            const response = await fetch('/api/v1/messages/cleanup', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                this.showStatus(`Cleanup completed: ${result.deleted_count || 0} messages removed`, 'success');
+                // Refresh stats after cleanup
+                this.loadStorageStats();
+            } else {
+                const error = await response.json();
+                this.showStatus(`Cleanup failed: ${error.error}`, 'error');
+            }
+
+        } catch (error) {
+            console.error('Cleanup failed:', error);
+            this.showStatus('Cleanup failed: Network error', 'error');
+        } finally {
+            button.textContent = originalText;
+            button.disabled = false;
+        }
+    }
+
+
+    handleHamlibChange(useHamlib) {
+        const radioModel = document.getElementById('radio-model');
+        const radioDevice = document.getElementById('radio-device');
+        const testCatButton = document.getElementById('test-cat');
+
+        if (useHamlib) {
+            // Enable real radio selection
+            radioModel.disabled = false;
+            radioDevice.disabled = false;
+            if (testCatButton) testCatButton.disabled = false;
+
+            // If currently on dummy, suggest a better default
+            if (radioModel.value === '1') {
+                // Don't auto-change but add a note
+                this.showStatus('Hamlib enabled - select your radio model and configure the serial port', 'info');
+            }
+        } else {
+            // Disable and force to dummy
+            radioModel.disabled = true;
+            radioDevice.disabled = true;
+            if (testCatButton) testCatButton.disabled = true;
+            radioModel.value = '1'; // Force to Hamlib Dummy
+            this.showStatus('Hamlib disabled - using dummy radio for testing', 'info');
+        }
     }
 }
 

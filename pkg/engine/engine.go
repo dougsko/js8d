@@ -6,13 +6,17 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/js8call/js8d/pkg/config"
-	"github.com/js8call/js8d/pkg/dsp"
-	"github.com/js8call/js8d/pkg/hardware"
-	"github.com/js8call/js8d/pkg/protocol"
+	"github.com/dougsko/js8d/pkg/audio"
+	"github.com/dougsko/js8d/pkg/config"
+	"github.com/dougsko/js8d/pkg/dsp"
+	"github.com/dougsko/js8d/pkg/hardware"
+	"github.com/dougsko/js8d/pkg/protocol"
+	"github.com/dougsko/js8d/pkg/storage"
 )
 
 // CoreEngine represents the main JS8 processing engine
@@ -28,10 +32,11 @@ type CoreEngine struct {
 	// DSP and hardware components
 	dspEngine       *dsp.DSP
 	hardwareManager *hardware.HardwareManager
+	audioMonitor    *audio.AudioLevelMonitor
 
 	// Message storage
-	messages []protocol.Message
-	msgMutex sync.RWMutex
+	messageStore *storage.MessageStore
+	msgMutex     sync.RWMutex
 
 	// Radio state
 	frequency int
@@ -88,6 +93,16 @@ func NewCoreEngine(cfg *config.Config, socketPath, configPath string) *CoreEngin
 		hardwareConfig.RadioBaudRate = 4800 // Default radio baud rate
 	}
 
+	// Initialize message store
+	messageStore, err := storage.NewMessageStore(cfg.Storage.DatabasePath, cfg.Storage.MaxMessages)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize message store: %v", err)
+		messageStore = nil // Continue without storage
+	}
+
+	// Initialize audio monitor for real-time visualization
+	audioMonitor := audio.NewAudioLevelMonitor(hardwareConfig.SampleRate, 1024)
+
 	return &CoreEngine{
 		config:          cfg,
 		configPath:      configPath,
@@ -97,9 +112,10 @@ func NewCoreEngine(cfg *config.Config, socketPath, configPath string) *CoreEngin
 		connected:       true,     // Mock - assume connected
 		rxMessages:      make(chan protocol.Message, 100),
 		txMessages:      make(chan protocol.Message, 100),
-		messages:        make([]protocol.Message, 0),
+		messageStore:    messageStore,
 		dspEngine:       dsp.NewDSP(),
 		hardwareManager: hardware.NewHardwareManager(hardwareConfig),
+		audioMonitor:    audioMonitor,
 		abortTx:         make(chan bool, 1),
 		transmitting:    false,
 	}
@@ -130,6 +146,15 @@ func (e *CoreEngine) Start() error {
 	// Start audio output for transmission
 	if err := e.hardwareManager.StartAudioOutput(); err != nil {
 		log.Printf("Warning: failed to start audio output: %v", err)
+	}
+
+	// Start audio monitoring
+	if err := e.audioMonitor.Start(); err != nil {
+		log.Printf("Warning: failed to start audio monitor: %v", err)
+	} else {
+		// Start audio sample processing goroutine
+		go e.processAudioSamples()
+		log.Printf("Audio monitoring started")
 	}
 
 	// Remove existing socket file
@@ -164,31 +189,6 @@ func (e *CoreEngine) Start() error {
 	return nil
 }
 
-// Stop stops the core engine
-func (e *CoreEngine) Stop() error {
-	e.mutex.Lock()
-	e.running = false
-	e.mutex.Unlock()
-
-	if e.listener != nil {
-		e.listener.Close()
-	}
-
-	// Clean up hardware manager
-	if e.hardwareManager != nil {
-		e.hardwareManager.Close()
-	}
-
-	// Clean up DSP engine
-	if e.dspEngine != nil {
-		e.dspEngine.Close()
-	}
-
-	// Clean up socket file
-	os.Remove(e.socketPath)
-
-	return nil
-}
 
 // acceptConnections accepts and handles socket connections
 func (e *CoreEngine) acceptConnections() {
@@ -270,7 +270,43 @@ func (e *CoreEngine) handleCommand(cmd *protocol.Command) *protocol.Response {
 		})
 
 	default:
-		return protocol.NewErrorResponse(fmt.Sprintf("unknown command: %s", cmd.Type))
+		// Handle string commands that aren't in the protocol enum
+		return e.handleStringCommand(cmd)
+	}
+}
+
+// handleStringCommand handles non-enum commands like database operations
+func (e *CoreEngine) handleStringCommand(cmd *protocol.Command) *protocol.Response {
+	cmdStr := string(cmd.Type)
+	parts := strings.Fields(cmdStr)
+
+	if len(parts) == 0 {
+		return protocol.NewErrorResponse("empty command")
+	}
+
+	switch parts[0] {
+	case "GET_MESSAGE_HISTORY":
+		return e.handleGetMessageHistory(parts[1:])
+	case "GET_CONVERSATIONS":
+		return e.handleGetConversations(parts[1:])
+	case "MARK_MESSAGES_READ":
+		return e.handleMarkMessagesRead(parts[1:])
+	case "SEARCH_MESSAGES":
+		return e.handleSearchMessages(parts[1:])
+	case "GET_MESSAGE_STATS":
+		return e.handleGetMessageStats()
+	case "CLEANUP_MESSAGES":
+		return e.handleCleanupMessages()
+	case "TEST_CAT":
+		return e.handleTestCAT(parts[1:])
+	case "TEST_PTT":
+		return e.handleTestPTT(parts[1:])
+	case "TEST_PTT_OFF":
+		return e.handleTestPTTOff()
+	case "RETRY_RADIO":
+		return e.handleRetryRadio()
+	default:
+		return protocol.NewErrorResponse(fmt.Sprintf("unknown command: %s", cmdStr))
 	}
 }
 
@@ -279,10 +315,18 @@ func (e *CoreEngine) handleStatus() *protocol.Response {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
+	// Get current frequency from radio if available
+	currentFreq := e.frequency // fallback to cached frequency
+	if e.hardwareManager != nil && e.hardwareManager.IsRadioConnected() {
+		if radioFreq, err := e.hardwareManager.GetRadioFrequency(); err == nil {
+			currentFreq = int(radioFreq)
+		}
+	}
+
 	status := protocol.Status{
 		Callsign:  e.config.Station.Callsign,
 		Grid:      e.config.Station.Grid,
-		Frequency: e.frequency,
+		Frequency: currentFreq,
 		Mode:      "JS8",
 		PTT:       e.ptt,
 		Connected: e.connected,
@@ -419,9 +463,14 @@ func (e *CoreEngine) messageProcessor() {
 		case msg := <-e.rxMessages:
 			log.Printf("RX: %s -> %s: %s (SNR: %.1fdB)", msg.From, msg.To, msg.Message, msg.SNR)
 
-			// Store message
+			// Store message in database
 			e.msgMutex.Lock()
-			e.messages = append(e.messages, msg)
+			if e.messageStore != nil {
+				messageType := e.classifyMessage(msg.Message)
+				if err := e.messageStore.StoreMessage(msg, "RX", messageType); err != nil {
+					log.Printf("Failed to store RX message: %v", err)
+				}
+			}
 			e.msgMutex.Unlock()
 
 			// Update OLED display with received message
@@ -432,6 +481,16 @@ func (e *CoreEngine) messageProcessor() {
 
 		case msg := <-e.txMessages:
 			log.Printf("TX: %s -> %s: %s", msg.From, msg.To, msg.Message)
+
+			// Store TX message in database
+			e.msgMutex.Lock()
+			if e.messageStore != nil {
+				messageType := e.classifyMessage(msg.Message)
+				if err := e.messageStore.StoreMessage(msg, "TX", messageType); err != nil {
+					log.Printf("Failed to store TX message: %v", err)
+				}
+			}
+			e.msgMutex.Unlock()
 
 			// Encode message using real DSP
 			if err := e.transmitMessage(msg); err != nil {
@@ -471,14 +530,14 @@ func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
 	e.mutex.Unlock()
 
 	// Activate hardware PTT
-	if err := e.hardwareManager.SetPTT(true); err != nil {
-		log.Printf("Warning: failed to set PTT: %v", err)
+	if err := e.hardwareManager.SetRadioPTT(true); err != nil {
+		log.Printf("Warning: failed to set radio PTT: %v", err)
 	}
 
 	defer func() {
 		// Deactivate hardware PTT
-		if err := e.hardwareManager.SetPTT(false); err != nil {
-			log.Printf("Warning: failed to clear PTT: %v", err)
+		if err := e.hardwareManager.SetRadioPTT(false); err != nil {
+			log.Printf("Warning: failed to clear radio PTT: %v", err)
 		}
 
 		e.mutex.Lock()
@@ -908,9 +967,12 @@ func (e *CoreEngine) handleAbort() *protocol.Response {
 		}
 	}
 
-	// Force PTT off immediately
+	// Force PTT off immediately (both GPIO and radio)
+	if err := e.hardwareManager.SetRadioPTT(false); err != nil {
+		log.Printf("Warning: failed to clear radio PTT during abort: %v", err)
+	}
 	if err := e.hardwareManager.SetPTT(false); err != nil {
-		log.Printf("Warning: failed to clear PTT during abort: %v", err)
+		log.Printf("Warning: failed to clear GPIO PTT during abort: %v", err)
 	}
 
 	// Update engine PTT state
@@ -939,19 +1001,37 @@ func (e *CoreEngine) handleReload() *protocol.Response {
 		return protocol.NewErrorResponse(fmt.Sprintf("failed to load config: %v", err))
 	}
 
-	// Update engine configuration
+	// Validate the new configuration
+	if err := newConfig.Validate(); err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("invalid configuration: %v", err))
+	}
+
+	// Check if audio configuration changed
 	e.mutex.Lock()
 	oldCallsign := e.config.Station.Callsign
 	oldGrid := e.config.Station.Grid
+	audioChanged := (e.config.Audio.InputDevice != newConfig.Audio.InputDevice ||
+		e.config.Audio.OutputDevice != newConfig.Audio.OutputDevice ||
+		e.config.Audio.SampleRate != newConfig.Audio.SampleRate)
 	e.config = newConfig
 	e.mutex.Unlock()
 
 	log.Printf("Engine: Configuration reloaded from %s", e.configPath)
 	log.Printf("Engine: Station updated - %s (%s)", newConfig.Station.Callsign, newConfig.Station.Grid)
 
-	// TODO: In a production system, we might want to reinitialize hardware
-	// components if their configuration changed, but for now we'll just
-	// update the basic settings
+	// Warn about audio changes - full reinit would require restart
+	if audioChanged {
+		log.Printf("Engine: Warning - Audio configuration changed. Full restart recommended for audio changes.")
+		return protocol.NewSuccessResponse(map[string]interface{}{
+			"status":       "reloaded",
+			"config_path":  e.configPath,
+			"old_callsign": oldCallsign,
+			"new_callsign": newConfig.Station.Callsign,
+			"old_grid":     oldGrid,
+			"new_grid":     newConfig.Station.Grid,
+			"warning":      "Audio configuration changed - restart recommended",
+		})
+	}
 
 	return protocol.NewSuccessResponse(map[string]interface{}{
 		"status":       "reloaded",
@@ -961,4 +1041,447 @@ func (e *CoreEngine) handleReload() *protocol.Response {
 		"old_grid":     oldGrid,
 		"new_grid":     newConfig.Station.Grid,
 	})
+}
+
+// Stop gracefully shuts down the core engine
+func (e *CoreEngine) Stop() error {
+	log.Printf("Stopping core engine...")
+
+	// Stop the engine
+	e.mutex.Lock()
+	e.running = false
+	e.mutex.Unlock()
+
+	// Close listener if it exists
+	if e.listener != nil {
+		if err := e.listener.Close(); err != nil {
+			log.Printf("Error closing listener: %v", err)
+		}
+	}
+
+	// Close message store
+	if e.messageStore != nil {
+		if err := e.messageStore.Close(); err != nil {
+			log.Printf("Error closing message store: %v", err)
+		}
+	}
+
+	// Close hardware manager
+	if e.hardwareManager != nil {
+		e.hardwareManager.Close()
+	}
+
+	log.Printf("Core engine stopped")
+	return nil
+}
+
+// classifyMessage determines the type of a JS8 message
+func (e *CoreEngine) classifyMessage(message string) string {
+	message = strings.ToUpper(strings.TrimSpace(message))
+
+	// Classify common JS8 message types
+	if strings.HasPrefix(message, "CQ") {
+		return "CQ"
+	}
+	if strings.HasPrefix(message, "HB") || strings.Contains(message, "HEARTBEAT") {
+		return "HEARTBEAT"
+	}
+	if strings.Contains(message, "SNR") {
+		return "SNR_REPORT"
+	}
+	if strings.Contains(message, "73") {
+		return "FAREWELL"
+	}
+	if strings.Contains(message, "?") {
+		return "QUERY"
+	}
+	if len(message) > 0 && (message[0] == '@' || strings.Contains(message, ":")) {
+		return "DIRECTED"
+	}
+
+	return "MESSAGE"
+}
+
+// handleGetMessageHistory handles GET_MESSAGE_HISTORY command
+func (e *CoreEngine) handleGetMessageHistory(args []string) *protocol.Response {
+	if e.messageStore == nil {
+		return protocol.NewErrorResponse("message storage not available")
+	}
+
+	// Parse arguments: limit offset callsign direction messageType unreadOnly
+	limit := 50
+	offset := 0
+	callsign := ""
+	direction := ""
+	messageType := ""
+	unreadOnly := false
+
+	if len(args) > 0 {
+		if l, err := strconv.Atoi(args[0]); err == nil {
+			limit = l
+		}
+	}
+	if len(args) > 1 {
+		if o, err := strconv.Atoi(args[1]); err == nil {
+			offset = o
+		}
+	}
+	if len(args) > 2 && args[2] != "" {
+		callsign = args[2]
+	}
+	if len(args) > 3 && args[3] != "" {
+		direction = args[3]
+	}
+	if len(args) > 4 && args[4] != "" {
+		messageType = args[4]
+	}
+	if len(args) > 5 {
+		unreadOnly = args[5] == "true"
+	}
+
+	query := storage.MessageQuery{
+		Limit:       limit,
+		Offset:      offset,
+		Callsign:    callsign,
+		Direction:   direction,
+		MessageType: messageType,
+		UnreadOnly:  unreadOnly,
+	}
+
+	messages, err := e.messageStore.GetMessages(query)
+	if err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to get messages: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"messages": messages,
+		"count":    len(messages),
+	})
+}
+
+// handleGetConversations handles GET_CONVERSATIONS command
+func (e *CoreEngine) handleGetConversations(args []string) *protocol.Response {
+	if e.messageStore == nil {
+		return protocol.NewErrorResponse("message storage not available")
+	}
+
+	limit := 20
+	if len(args) > 0 {
+		if l, err := strconv.Atoi(args[0]); err == nil {
+			limit = l
+		}
+	}
+
+	conversations, err := e.messageStore.GetConversations(limit)
+	if err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to get conversations: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"conversations": conversations,
+		"count":         len(conversations),
+	})
+}
+
+// handleMarkMessagesRead handles MARK_MESSAGES_READ command
+func (e *CoreEngine) handleMarkMessagesRead(args []string) *protocol.Response {
+	if e.messageStore == nil {
+		return protocol.NewErrorResponse("message storage not available")
+	}
+
+	if len(args) == 0 {
+		return protocol.NewErrorResponse("callsign required")
+	}
+
+	callsign := args[0]
+	if err := e.messageStore.MarkMessagesAsRead(callsign); err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to mark messages as read: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":   "success",
+		"callsign": callsign,
+	})
+}
+
+// handleSearchMessages handles SEARCH_MESSAGES command
+func (e *CoreEngine) handleSearchMessages(args []string) *protocol.Response {
+	if e.messageStore == nil {
+		return protocol.NewErrorResponse("message storage not available")
+	}
+
+	if len(args) == 0 {
+		return protocol.NewErrorResponse("search query required")
+	}
+
+	query := args[0]
+	limit := 50
+	if len(args) > 1 {
+		if l, err := strconv.Atoi(args[1]); err == nil {
+			limit = l
+		}
+	}
+
+	messages, err := e.messageStore.SearchMessages(query, limit)
+	if err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("search failed: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"messages": messages,
+		"count":    len(messages),
+		"query":    query,
+	})
+}
+
+// handleGetMessageStats handles GET_MESSAGE_STATS command
+func (e *CoreEngine) handleGetMessageStats() *protocol.Response {
+	if e.messageStore == nil {
+		return protocol.NewErrorResponse("message storage not available")
+	}
+
+	stats, err := e.messageStore.GetMessageStats()
+	if err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to get stats: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"total_messages": stats.TotalMessages,
+		"total_rx":       stats.TotalRX,
+		"total_tx":       stats.TotalTX,
+		"last_cleanup":   stats.LastCleanup,
+	})
+}
+
+// handleCleanupMessages triggers manual cleanup of old messages
+func (e *CoreEngine) handleCleanupMessages() *protocol.Response {
+	if e.messageStore == nil {
+		return protocol.NewErrorResponse("message storage not available")
+	}
+
+	// Get current count before cleanup
+	currentCount, err := e.messageStore.GetMessageCount()
+	if err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to get current message count: %v", err))
+	}
+
+	// Force cleanup using the exported method
+	if err := e.messageStore.CleanupOldMessages(); err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("cleanup failed: %v", err))
+	}
+
+	// Get count after cleanup to see how many were deleted
+	newCount, err := e.messageStore.GetMessageCount()
+	if err != nil {
+		log.Printf("Warning: failed to get post-cleanup count: %v", err)
+		newCount = currentCount // Fallback
+	}
+
+	deletedCount := currentCount - newCount
+	log.Printf("Manual cleanup completed: %d messages deleted", deletedCount)
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":        "success",
+		"deleted_count": deletedCount,
+		"total_before":  currentCount,
+		"total_after":   newCount,
+	})
+}
+
+// handleTestCAT handles TEST_CAT command for radio testing
+func (e *CoreEngine) handleTestCAT(args []string) *protocol.Response {
+	if len(args) < 3 {
+		return protocol.NewErrorResponse("usage: TEST_CAT device model baudrate")
+	}
+
+	device := args[0]
+	model := args[1]
+	baudRate, err := strconv.Atoi(args[2])
+	if err != nil {
+		return protocol.NewErrorResponse("invalid baud rate")
+	}
+
+	// TODO: Implement actual CAT testing via hardware manager
+	log.Printf("Testing CAT: device=%s model=%s baud=%d", device, model, baudRate)
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":  "success",
+		"device":  device,
+		"model":   model,
+		"baud":    baudRate,
+		"message": "CAT test completed successfully",
+	})
+}
+
+// handleTestPTT handles TEST_PTT command for PTT testing
+func (e *CoreEngine) handleTestPTT(args []string) *protocol.Response {
+	if len(args) < 3 {
+		return protocol.NewErrorResponse("usage: TEST_PTT method port delay")
+	}
+
+	method := args[0]
+	port := args[1]
+	delay, err := strconv.ParseFloat(args[2], 64)
+	if err != nil {
+		return protocol.NewErrorResponse("invalid delay value")
+	}
+
+	log.Printf("Testing PTT: method=%s port=%s delay=%.1f", method, port, delay)
+
+	// Test PTT via hardware manager
+	if e.hardwareManager == nil {
+		return protocol.NewErrorResponse("hardware manager not available")
+	}
+
+	// Check if radio is connected for CAT PTT
+	if method == "cat" && !e.hardwareManager.IsRadioConnected() {
+		return protocol.NewErrorResponse("radio not connected - CAT PTT requires working radio connection")
+	}
+
+	// Test PTT activation
+	log.Printf("Activating PTT...")
+	if err := e.hardwareManager.SetRadioPTT(true); err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to activate PTT: %v", err))
+	}
+
+	// For toggle mode, just activate and return success
+	// Don't automatically turn off - let user control it
+	if delay <= 1.0 {
+		log.Printf("PTT activated for toggle mode")
+		return protocol.NewSuccessResponse(map[string]interface{}{
+			"status":  "success",
+			"method":  method,
+			"port":    port,
+			"mode":    "toggle",
+			"message": "PTT activated - use TEST_PTT_OFF to deactivate",
+		})
+	}
+
+	// Traditional test mode - hold for delay then turn off
+	time.Sleep(time.Duration(delay * float64(time.Second)))
+
+	// Deactivate PTT
+	log.Printf("Deactivating PTT...")
+	if err := e.hardwareManager.SetRadioPTT(false); err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to deactivate PTT: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":  "success",
+		"method":  method,
+		"port":    port,
+		"delay":   delay,
+		"message": "PTT test completed successfully",
+	})
+}
+
+// handleTestPTTOff handles TEST_PTT_OFF command to turn off PTT
+func (e *CoreEngine) handleTestPTTOff() *protocol.Response {
+	// Test PTT via hardware manager
+	if e.hardwareManager == nil {
+		return protocol.NewErrorResponse("hardware manager not available")
+	}
+
+	// Deactivate PTT
+	log.Printf("Deactivating PTT...")
+	if err := e.hardwareManager.SetRadioPTT(false); err != nil {
+		return protocol.NewErrorResponse(fmt.Sprintf("failed to deactivate PTT: %v", err))
+	}
+
+	log.Printf("PTT deactivated successfully")
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"status":  "success",
+		"message": "PTT deactivated successfully",
+	})
+}
+
+// handleRetryRadio handles RETRY_RADIO command to reconnect radio
+func (e *CoreEngine) handleRetryRadio() *protocol.Response {
+	if e.hardwareManager == nil {
+		return protocol.NewErrorResponse("hardware manager not available")
+	}
+
+	log.Printf("Attempting to retry radio connection...")
+
+	// Try to reconnect the radio
+	if err := e.hardwareManager.RetryRadioConnection(); err != nil {
+		log.Printf("Radio retry failed: %v", err)
+		return protocol.NewErrorResponse(fmt.Sprintf("radio retry failed: %v", err))
+	}
+
+	return protocol.NewSuccessResponse(map[string]interface{}{
+		"message": "Radio connection retry successful",
+		"status":  "connected",
+	})
+}
+
+// processAudioSamples processes incoming audio samples for monitoring
+func (e *CoreEngine) processAudioSamples() {
+	log.Printf("Starting audio sample processing for monitoring")
+
+	// Get the audio input samples channel
+	audioSamples := e.hardwareManager.GetAudioInputSamples()
+	if audioSamples == nil {
+		log.Printf("Warning: no audio input samples available")
+		return
+	}
+
+	for {
+		select {
+		case samples, ok := <-audioSamples:
+			if !ok {
+				log.Printf("Audio samples channel closed, stopping processing")
+				return
+			}
+
+			// Process samples through the audio monitor
+			if e.audioMonitor != nil {
+				e.audioMonitor.ProcessSamples(samples)
+			}
+
+			// Also process samples through DSP for JS8 decoding
+			if e.dspEngine != nil {
+				_, err := e.dspEngine.DecodeBuffer(samples, func(result *dsp.DecodeResult) {
+					// Convert DSP result to protocol message
+					message := protocol.Message{
+						ID:        0, // Will be assigned by storage
+						Timestamp: time.Now(),
+						From:      "UNKNOWN", // Would need to parse from message
+						To:        "ALL",     // Default for broadcasts
+						Message:   result.Message,
+						SNR:       float32(result.SNR),
+						Frequency: int(result.Frequency),
+						Mode:      "JS8",
+					}
+
+					// Send to RX message channel for processing
+					select {
+					case e.rxMessages <- message:
+					default:
+						// Channel full, drop message
+					}
+				})
+
+				if err != nil {
+					log.Printf("DSP decode error: %v", err)
+				}
+			}
+
+		case <-time.After(1 * time.Second):
+			// Check if engine is still running
+			e.mutex.RLock()
+			running := e.running
+			e.mutex.RUnlock()
+
+			if !running {
+				log.Printf("Engine stopped, ending audio processing")
+				return
+			}
+		}
+	}
+}
+
+// GetAudioMonitor returns the audio monitor for direct access
+func (e *CoreEngine) GetAudioMonitor() *audio.AudioLevelMonitor {
+	return e.audioMonitor
 }

@@ -9,17 +9,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/js8call/js8d/pkg/client"
-	"github.com/js8call/js8d/pkg/config"
-	"github.com/js8call/js8d/pkg/engine"
+	"github.com/dougsko/js8d/pkg/client"
+	"github.com/dougsko/js8d/pkg/config"
+	"github.com/dougsko/js8d/pkg/engine"
 )
 
 // JS8Daemon represents the main daemon with Unix socket architecture
 type JS8Daemon struct {
-	config *config.Config
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	config     *config.Config
+	configPath string
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
 
 	// Core components
 	coreEngine   *engine.CoreEngine
@@ -41,6 +42,7 @@ func NewJS8Daemon(cfg *config.Config, configPath string) (*JS8Daemon, error) {
 
 	daemon := &JS8Daemon{
 		config:       cfg,
+		configPath:   configPath,
 		ctx:          ctx,
 		cancel:       cancel,
 		socketPath:   socketPath,
@@ -140,15 +142,29 @@ func (d *JS8Daemon) setupWebServer() error {
 		api.GET("/status", d.handleGetStatus)
 		api.GET("/messages", d.handleGetMessages)
 		api.POST("/messages", d.handleSendMessage)
+		api.GET("/messages/history", d.handleGetMessageHistory)
+		api.GET("/messages/conversations", d.handleGetConversations)
+		api.POST("/messages/mark-read", d.handleMarkMessagesRead)
+		api.GET("/messages/search", d.handleSearchMessages)
+		api.GET("/messages/stats", d.handleGetMessageStats)
+		api.POST("/messages/cleanup", d.handleCleanupMessages)
 		api.GET("/radio", d.handleGetRadio)
 		api.PUT("/radio/frequency", d.handleSetFrequency)
 		api.POST("/abort", d.handleAbortTransmission)
 		api.GET("/config", d.handleGetConfig)
 		api.POST("/config", d.handleSaveConfig)
 		api.POST("/config/reload", d.handleReloadConfig)
+		api.POST("/radio/retry-connection", d.handleRetryRadioConnection)
 		api.POST("/radio/test-cat", d.handleTestCAT)
 		api.POST("/radio/test-ptt", d.handleTestPTT)
+		api.POST("/radio/test-ptt-off", d.handleTestPTTOff)
+		api.GET("/audio/stats", d.handleGetAudioStats)
+		api.GET("/audio/devices", d.handleGetAudioDevices)
+		api.GET("/serial/devices", d.handleGetSerialDevices)
 	}
+
+	// WebSocket endpoints
+	router.GET("/ws/audio", d.handleAudioWebSocket)
 
 	addr := fmt.Sprintf("%s:%d", d.config.Web.BindAddress, d.config.Web.Port)
 	d.webServer = &http.Server{

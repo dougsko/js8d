@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/js8call/js8d/pkg/dsp"
+	"github.com/dougsko/js8d/pkg/dsp"
 )
 
 func main() {

@@ -1,0 +1,67 @@
+# js8d Production Configuration
+# This file should be installed to /etc/js8d/config.yaml
+
+# Station Configuration
+station:
+  callsign: "YOUR_CALLSIGN"  # Replace with your amateur radio callsign
+  grid: "FN31pr"             # Replace with your 6-character grid square
+
+# Audio Configuration
+audio:
+  # ALSA audio device configuration (Linux)
+  input_device: "hw:0,0"     # Audio input device (microphone/line in)
+  output_device: "hw:0,0"    # Audio output device (speakers/line out)
+
+  # Audio parameters
+  sample_rate: 48000         # Audio sample rate (48kHz recommended)
+  buffer_size: 1024          # Audio buffer size (1024 samples)
+
+  # Channel configuration
+  input_channels: "1"        # Mono input
+  output_channels: "1"       # Mono output
+
+# Radio Configuration
+radio:
+  use_hamlib: true           # Enable hamlib radio control
+  device: "/dev/ttyUSB0"     # Serial device for radio control
+  model: "2028"              # Hamlib radio model (2028 = Elecraft KX series)
+  baud_rate: 38400           # Serial baud rate
+
+  # PTT Configuration
+  ptt_method: "CAT"          # PTT method: CAT, RTS, DTR, or GPIO
+  ptt_port: ""               # PTT port (if different from CAT port)
+  tx_delay: 0.2              # TX delay in seconds
+
+# Web Interface Configuration
+web:
+  port: 8080                 # HTTP server port
+  bind_address: "0.0.0.0"    # Bind address (0.0.0.0 for all interfaces)
+
+# API Configuration
+api:
+  unix_socket: "/run/js8d/js8d.sock"  # Unix domain socket path
+
+# Storage Configuration
+storage:
+  database_path: "/var/lib/js8d/js8d.db"  # SQLite database file
+  max_messages: 10000                     # Maximum messages to keep (0 = unlimited)
+
+# Hardware Configuration (Raspberry Pi)
+hardware:
+  enable_gpio: false         # Enable GPIO control (requires root or gpio group)
+  ptt_gpio_pin: 18          # GPIO pin for PTT output
+  status_led_pin: 24        # GPIO pin for status LED
+
+  # OLED Display (optional)
+  enable_oled: false        # Enable OLED display
+  oled_width: 128           # OLED width in pixels
+  oled_height: 64           # OLED height in pixels
+  oled_i2c_address: 0x3C    # I2C address for OLED display
+
+# Logging Configuration
+logging:
+  level: "info"             # Log level: debug, info, warn, error
+  file: "/var/log/js8d/js8d.log"  # Log file path
+  max_size: 100             # Maximum log file size in MB
+  max_backups: 5            # Number of old log files to keep
+  max_age: 30               # Maximum age of log files in days

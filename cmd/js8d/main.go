@@ -8,7 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/js8call/js8d/pkg/config"
+	"github.com/dougsko/js8d/pkg/config"
+	"github.com/dougsko/js8d/pkg/logging"
 )
 
 var (
@@ -39,15 +40,23 @@ func main() {
 		log.Fatalf("Invalid configuration: %v", err)
 	}
 
-	log.Printf("js8d version %s starting...", Version)
-	log.Printf("Station: %s (%s)", cfg.Station.Callsign, cfg.Station.Grid)
-	log.Printf("Radio: %s on %s", cfg.Radio.Model, cfg.Radio.Device)
-	log.Printf("Web interface: http://%s:%d", cfg.Web.BindAddress, cfg.Web.Port)
+	// Initialize logging system
+	if err := logging.InitGlobalLogger(cfg); err != nil {
+		log.Fatalf("Failed to initialize logging: %v", err)
+	}
+	defer logging.CloseGlobalLogger()
+
+	// Switch to using the new logger
+	logging.Info("main", fmt.Sprintf("js8d version %s starting...", Version))
+	logging.Info("main", fmt.Sprintf("Station: %s (%s)", cfg.Station.Callsign, cfg.Station.Grid))
+	logging.Info("main", fmt.Sprintf("Radio: %s on %s", cfg.GetRadioName(), cfg.Radio.Device))
+	logging.Info("main", fmt.Sprintf("Web interface: http://%s:%d", cfg.Web.BindAddress, cfg.Web.Port))
 
 	// Create the daemon with config path for reloading
 	daemon, err := NewJS8Daemon(cfg, *configPath)
 	if err != nil {
-		log.Fatalf("Failed to create daemon: %v", err)
+		logging.Error("main", fmt.Sprintf("Failed to create daemon: %v", err))
+		os.Exit(1)
 	}
 
 	// Set up signal handling for graceful shutdown
@@ -56,19 +65,20 @@ func main() {
 
 	// Start the daemon
 	if err := daemon.Start(); err != nil {
-		log.Fatalf("Failed to start daemon: %v", err)
+		logging.Error("main", fmt.Sprintf("Failed to start daemon: %v", err))
+		os.Exit(1)
 	}
 
-	log.Printf("js8d started successfully")
+	logging.Info("main", "js8d started successfully")
 
 	// Wait for shutdown signal
 	<-sigChan
-	log.Printf("Shutting down...")
+	logging.Info("main", "Shutting down...")
 
 	// Graceful shutdown
 	if err := daemon.Stop(); err != nil {
-		log.Printf("Error during shutdown: %v", err)
+		logging.Error("main", fmt.Sprintf("Error during shutdown: %v", err))
 	}
 
-	log.Printf("js8d stopped")
+	logging.Info("main", "js8d stopped")
 }

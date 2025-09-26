@@ -104,6 +104,48 @@
             background: #1976D2;
         }
 
+        .storage-stats {
+            background: #1e1e1e;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 5px 0;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .stat-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            color: #999;
+            font-weight: bold;
+        }
+
+        .stat-value {
+            color: #4CAF50;
+            font-family: monospace;
+        }
+
+        .storage-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .storage-actions button {
+            flex: 1;
+            min-width: 120px;
+        }
+
         .test-button:active {
             background: #0D47A1;
         }
@@ -111,6 +153,36 @@
         .test-button.testing {
             background: #FF9800;
             cursor: not-allowed;
+        }
+
+        .test-button.success {
+            background: #4CAF50;
+            border: 2px solid #45a049;
+        }
+
+        .test-button.success:hover {
+            background: #45a049;
+        }
+
+        .test-button.error {
+            background: #f44336;
+            border: 2px solid #d32f2f;
+        }
+
+        .test-button.error:hover {
+            background: #d32f2f;
+        }
+
+        .test-button.tx-active {
+            background: #f44336;
+            border: 2px solid #d32f2f;
+            animation: pulse-tx 1s infinite;
+        }
+
+        @keyframes pulse-tx {
+            0% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(244, 67, 54, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
         }
 
         .file-input-group {
@@ -181,11 +253,16 @@
         }
 
         .status-message {
-            padding: 10px 15px;
-            border-radius: 4px;
-            margin: 10px 0;
+            padding: 12px 20px;
+            border-radius: 6px;
+            margin: 15px 0;
             text-align: center;
             font-weight: bold;
+            position: sticky;
+            top: 10px;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            border: 1px solid;
         }
 
         .status-success {
@@ -200,6 +277,63 @@
             color: #f44336;
         }
 
+        /* Audio Monitoring Styles */
+        .vu-meter-container {
+            position: relative;
+            margin: 10px 0;
+        }
+
+        .vu-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        #spectrum-canvas, #waterfall-canvas {
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1e1e1e;
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+        }
+
+        #input-vu-meter, #output-vu-meter {
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1e1e1e;
+            display: block;
+        }
+
+        .audio-monitoring-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 10px 0;
+        }
+
+        .monitoring-status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .monitoring-status.active {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+            border: 1px solid #4CAF50;
+        }
+
+        .monitoring-status.inactive {
+            background: rgba(158, 158, 158, 0.2);
+            color: #999;
+            border: 1px solid #666;
+        }
+
         @media (max-width: 768px) {
             .config-grid {
                 grid-template-columns: 1fr;
@@ -212,6 +346,16 @@
 
             .save-buttons {
                 flex-direction: column;
+            }
+
+            #spectrum-canvas, #waterfall-canvas {
+                width: 100%;
+                height: auto;
+            }
+
+            #input-vu-meter, #output-vu-meter {
+                width: 100%;
+                height: auto;
             }
         }
     </style>
@@ -246,6 +390,152 @@
                 </div>
             </div>
 
+            <!-- Radio & CAT Control Configuration -->
+            <div class="config-section">
+                <h3>Radio Configuration</h3>
+                <div class="config-grid">
+                    <label>Use Hamlib for radio control:</label>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="radio-use-hamlib" name="radio.use_hamlib">
+                    </div>
+
+                    <label for="radio-model">Radio Model:</label>
+                    <select id="radio-model" name="radio.model">
+                        <option value="1">Hamlib Dummy</option>
+                        <option value="2">NET rigctl</option>
+                        <option value="1001">Yaesu FT-847</option>
+                        <option value="1004">Yaesu FT-1000MP</option>
+                        <option value="1014">Yaesu FT-920</option>
+                        <option value="1016">Yaesu FT-990</option>
+                        <option value="1029">Yaesu FT-857D</option>
+                        <option value="1035">Yaesu FT-450</option>
+                        <option value="1039">Yaesu FT-891</option>
+                        <option value="1042">Yaesu FT-991A</option>
+                        <option value="1043">Yaesu FT-dx1200</option>
+                        <option value="1044">Yaesu FT-dx3000</option>
+                        <option value="2028">Kenwood TS-480</option>
+                        <option value="2014">Kenwood TS-2000</option>
+                        <option value="2031">Kenwood TS-590S</option>
+                        <option value="2032">Kenwood TS-590SG</option>
+                        <option value="2033">Kenwood TS-990S</option>
+                        <option value="3007">Icom IC-706</option>
+                        <option value="3012">Icom IC-7000</option>
+                        <option value="3020">Icom IC-7100</option>
+                        <option value="3027">Icom IC-7200</option>
+                        <option value="3028">Icom IC-761</option>
+                        <option value="3073">Icom IC-7300</option>
+                        <option value="3032">Icom IC-7610</option>
+                        <option value="3033">Icom IC-705</option>
+                        <option value="1045">mcHF QRP</option>
+                        <option value="10001">QRP Labs QDX</option>
+                    </select>
+
+                    <label for="radio-device">Serial Port:</label>
+                    <select id="radio-device" name="radio.device">
+                        <option value="">Loading devices...</option>
+                    </select>
+
+                    <label for="radio-baud-rate">Baud Rate:</label>
+                    <select id="radio-baud-rate" name="radio.baud_rate">
+                        <option value="4800">4800</option>
+                        <option value="9600">9600</option>
+                        <option value="19200">19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200">115200</option>
+                    </select>
+
+                    <label for="radio-poll-interval">Poll Interval:</label>
+                    <select id="radio-poll-interval" name="radio.poll_interval">
+                        <option value="100">100ms</option>
+                        <option value="500">500ms</option>
+                        <option value="1000">1s</option>
+                        <option value="2000">2s</option>
+                        <option value="5000">5s</option>
+                    </select>
+
+                    <label for="radio-data-bits">Data Bits:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.data_bits" value="default" checked> Default</label>
+                        <label><input type="radio" name="radio.data_bits" value="7"> Seven</label>
+                        <label><input type="radio" name="radio.data_bits" value="8"> Eight</label>
+                    </div>
+
+                    <label for="radio-stop-bits">Stop Bits:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.stop_bits" value="default" checked> Default</label>
+                        <label><input type="radio" name="radio.stop_bits" value="1"> One</label>
+                        <label><input type="radio" name="radio.stop_bits" value="2"> Two</label>
+                    </div>
+
+                    <label for="radio-handshake">Handshake:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.handshake" value="default" checked> Default</label>
+                        <label><input type="radio" name="radio.handshake" value="none"> None</label>
+                        <label><input type="radio" name="radio.handshake" value="xon_xoff"> XON/XOFF</label>
+                        <label><input type="radio" name="radio.handshake" value="hardware"> Hardware</label>
+                    </div>
+
+                    <label for="radio-dtr">Force Control Lines DTR:</label>
+                    <select id="radio-dtr" name="radio.dtr">
+                        <option value="default">Default</option>
+                        <option value="high">High</option>
+                        <option value="low">Low</option>
+                    </select>
+
+                    <label for="radio-rts">Force Control Lines RTS:</label>
+                    <select id="radio-rts" name="radio.rts">
+                        <option value="default">Default</option>
+                        <option value="high">High</option>
+                        <option value="low">Low</option>
+                    </select>
+
+                    <!-- PTT Configuration Divider -->
+                    <div style="grid-column: 1 / -1; border-top: 2px solid #4CAF50; margin: 20px 0 15px 0; position: relative;">
+                        <span style="background: #2d2d2d; padding: 0 15px; color: #4CAF50; font-weight: bold; position: absolute; top: -12px; left: 0;">PTT Configuration</span>
+                    </div>
+
+                    <label for="radio-ptt-method">PTT Method:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.ptt_method" value="vox"> VOX</label>
+                        <label><input type="radio" name="radio.ptt_method" value="cat" checked> CAT</label>
+                        <label><input type="radio" name="radio.ptt_method" value="dtr"> DTR</label>
+                        <label><input type="radio" name="radio.ptt_method" value="rts"> RTS</label>
+                    </div>
+
+                    <label for="radio-mode">Mode:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.mode" value="none"> None</label>
+                        <label><input type="radio" name="radio.mode" value="usb"> USB</label>
+                        <label><input type="radio" name="radio.mode" value="data" checked> Data/Pkt</label>
+                    </div>
+
+                    <label for="radio-tx-audio-source">Transmit Audio Source:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.tx_audio_source" value="rear"> Rear/Data</label>
+                        <label><input type="radio" name="radio.tx_audio_source" value="front" checked> Front/Mic</label>
+                    </div>
+
+                    <label for="radio-split-operation">Split Operation:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="radio.split_operation" value="none"> None</label>
+                        <label><input type="radio" name="radio.split_operation" value="rig" checked> Rig</label>
+                        <label><input type="radio" name="radio.split_operation" value="fake"> Fake It</label>
+                    </div>
+
+                    <label for="radio-ptt-command">PTT Command:</label>
+                    <input type="text" id="radio-ptt-command" name="radio.ptt_command" placeholder="Optional PTT command">
+
+                    <label for="radio-tx-delay">TX Delay:</label>
+                    <input type="number" id="radio-tx-delay" name="radio.tx_delay" value="0.2" step="0.1" min="0" max="10">
+                </div>
+                <div class="test-buttons">
+                    <button type="button" id="test-cat" class="test-button">Test CAT</button>
+                    <button type="button" id="retry-radio-connection" class="test-button">Retry Connection</button>
+                    <button type="button" id="test-ptt" class="test-button">Test PTT</button>
+                </div>
+            </div>
+
             <!-- Audio Configuration -->
             <div class="config-section">
                 <h3>Audio Configuration</h3>
@@ -253,9 +543,7 @@
                     <label for="audio-input">Modulation Input:</label>
                     <select id="audio-input" name="audio.input_device">
                         <option value="default">System Default</option>
-                        <option value="QMX Transceiver">QMX Transceiver</option>
-                        <option value="Built-in Microphone">Built-in Microphone</option>
-                        <option value="USB Audio Device">USB Audio Device</option>
+                        <!-- Options will be loaded dynamically -->
                     </select>
 
                     <label for="audio-input-channels">Input Channels:</label>
@@ -267,9 +555,7 @@
                     <label for="audio-output">Modulation Output:</label>
                     <select id="audio-output" name="audio.output_device">
                         <option value="default">System Default</option>
-                        <option value="QMX Transceiver">QMX Transceiver</option>
-                        <option value="Built-in Output">Built-in Output</option>
-                        <option value="USB Audio Device">USB Audio Device</option>
+                        <!-- Options will be loaded dynamically -->
                     </select>
 
                     <label for="audio-output-channels">Output Channels:</label>
@@ -280,9 +566,7 @@
 
                     <label for="audio-notification-output">Notification Output:</label>
                     <select id="audio-notification-output" name="audio.notification_device">
-                        <option value="Built-in Output">Built-in Output</option>
-                        <option value="QMX Transceiver">QMX Transceiver</option>
-                        <option value="USB Audio Device">USB Audio Device</option>
+                        <!-- Options will be loaded dynamically -->
                     </select>
 
                     <label for="audio-sample-rate">Sample Rate:</label>
@@ -322,160 +606,76 @@
                 </div>
             </div>
 
-            <!-- Radio Configuration -->
+            <!-- Audio Monitoring -->
             <div class="config-section">
-                <h3>Radio Configuration</h3>
+                <h3>Audio Monitoring</h3>
+
+                <!-- VU Meters -->
                 <div class="config-grid">
-                    <div class="checkbox-wrapper">
-                        <label for="radio-use-hamlib">
-                            <input type="checkbox" id="radio-use-hamlib" name="radio.use_hamlib">
-                            Use Hamlib for radio control
-                        </label>
+                    <label>Input Level:</label>
+                    <div class="vu-meter-container">
+                        <canvas id="input-vu-meter" width="300" height="50"></canvas>
+                        <div class="vu-labels">
+                            <span>-60dB</span>
+                            <span>-40dB</span>
+                            <span>-20dB</span>
+                            <span>-6dB</span>
+                            <span>0dB</span>
+                        </div>
                     </div>
 
-                    <label for="radio-model">Radio Model:</label>
-                    <select id="radio-model" name="radio.model">
-                        <option value="1">Hamlib Dummy</option>
-                        <option value="2">NET rigctl</option>
-                        <option value="1001">Yaesu FT-847</option>
-                        <option value="1004">Yaesu FT-1000MP</option>
-                        <option value="1014">Yaesu FT-920</option>
-                        <option value="1016">Yaesu FT-990</option>
-                        <option value="1029">Yaesu FT-857D</option>
-                        <option value="1035">Yaesu FT-450</option>
-                        <option value="1039">Yaesu FT-891</option>
-                        <option value="1042">Yaesu FT-991A</option>
-                        <option value="1043">Yaesu FT-dx1200</option>
-                        <option value="1044">Yaesu FT-dx3000</option>
-                        <option value="2028">Kenwood TS-480</option>
-                        <option value="2014">Kenwood TS-2000</option>
-                        <option value="2031">Kenwood TS-590S</option>
-                        <option value="2032">Kenwood TS-590SG</option>
-                        <option value="2033">Kenwood TS-990S</option>
-                        <option value="3007">Icom IC-706</option>
-                        <option value="3012">Icom IC-7000</option>
-                        <option value="3020">Icom IC-7100</option>
-                        <option value="3027">Icom IC-7200</option>
-                        <option value="3028">Icom IC-7300</option>
-                        <option value="3032">Icom IC-7610</option>
-                        <option value="3033">Icom IC-705</option>
-                        <option value="1045">mcHF QRP</option>
-                        <option value="10001">QRP Labs QDX</option>
-                    </select>
-
-                    <label for="radio-poll-interval">Poll Interval:</label>
-                    <select id="radio-poll-interval" name="radio.poll_interval">
-                        <option value="100">100ms</option>
-                        <option value="500">500ms</option>
-                        <option value="1000">1s</option>
-                        <option value="2000">2s</option>
-                        <option value="5000">5s</option>
-                    </select>
+                    <label>Output Level:</label>
+                    <div class="vu-meter-container">
+                        <canvas id="output-vu-meter" width="300" height="50"></canvas>
+                        <div class="vu-labels">
+                            <span>-60dB</span>
+                            <span>-40dB</span>
+                            <span>-20dB</span>
+                            <span>-6dB</span>
+                            <span>0dB</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
 
-            <!-- CAT Control Configuration -->
-            <div class="config-section">
-                <h3>CAT Control</h3>
-                <div class="config-grid">
-                    <label for="radio-device">Serial Port:</label>
-                    <input type="text" id="radio-device" name="radio.device" placeholder="/dev/ttyUSBmodem14201">
-
-                    <label for="radio-baud-rate">Baud Rate:</label>
-                    <select id="radio-baud-rate" name="radio.baud_rate">
-                        <option value="4800">4800</option>
-                        <option value="9600">9600</option>
-                        <option value="19200">19200</option>
-                        <option value="38400">38400</option>
-                        <option value="57600">57600</option>
-                        <option value="115200">115200</option>
-                    </select>
-
-                    <label for="radio-data-bits">Data Bits:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.data_bits" value="default" checked> Default</label>
-                        <label><input type="radio" name="radio.data_bits" value="7"> Seven</label>
-                        <label><input type="radio" name="radio.data_bits" value="8"> Eight</label>
-                    </div>
-
-                    <label for="radio-stop-bits">Stop Bits:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.stop_bits" value="default" checked> Default</label>
-                        <label><input type="radio" name="radio.stop_bits" value="1"> One</label>
-                        <label><input type="radio" name="radio.stop_bits" value="2"> Two</label>
-                    </div>
-
-                    <label for="radio-handshake">Handshake:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.handshake" value="default" checked> Default</label>
-                        <label><input type="radio" name="radio.handshake" value="none"> None</label>
-                        <label><input type="radio" name="radio.handshake" value="xon_xoff"> XON/XOFF</label>
-                        <label><input type="radio" name="radio.handshake" value="hardware"> Hardware</label>
-                    </div>
-
-                    <label for="radio-dtr">Force Control Lines DTR:</label>
-                    <select id="radio-dtr" name="radio.dtr">
-                        <option value="default">Default</option>
-                        <option value="high">High</option>
-                        <option value="low">Low</option>
-                    </select>
-
-                    <label for="radio-rts">Force Control Lines RTS:</label>
-                    <select id="radio-rts" name="radio.rts">
-                        <option value="default">Default</option>
-                        <option value="high">High</option>
-                        <option value="low">Low</option>
-                    </select>
+                <!-- Spectrum Display -->
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 10px;">Audio Spectrum (JS8 Range 500-2500 Hz):</label>
+                    <canvas id="spectrum-canvas" width="800" height="200"></canvas>
                 </div>
-                <div class="test-buttons">
-                    <button type="button" id="test-cat" class="test-button">Test CAT</button>
+
+                <!-- Waterfall Display -->
+                <div style="margin-top: 20px;">
+                    <label style="display: block; margin-bottom: 10px;">Waterfall Display:</label>
+                    <canvas id="waterfall-canvas" width="800" height="300"></canvas>
                 </div>
-            </div>
 
-            <!-- PTT Configuration -->
-            <div class="config-section">
-                <h3>PTT Configuration</h3>
-                <div class="config-grid">
-                    <label for="radio-ptt-method">PTT Method:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.ptt_method" value="vox"> VOX</label>
-                        <label><input type="radio" name="radio.ptt_method" value="cat" checked> CAT</label>
-                        <label><input type="radio" name="radio.ptt_method" value="dtr"> DTR</label>
-                        <label><input type="radio" name="radio.ptt_method" value="rts"> RTS</label>
+                <!-- Audio Controls -->
+                <div class="config-grid" style="margin-top: 20px;">
+                    <label>Monitoring:</label>
+                    <div class="test-buttons">
+                        <button type="button" id="start-audio-monitoring" class="test-button">Start Monitoring</button>
+                        <button type="button" id="stop-audio-monitoring" class="test-button" style="background: #f44336;">Stop Monitoring</button>
                     </div>
 
-                    <label for="radio-ptt-port">PTT Port:</label>
-                    <input type="text" id="radio-ptt-port" name="radio.ptt_port" placeholder="/dev/ttyUSBmodem14201">
-
-                    <label for="radio-mode">Mode:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.mode" value="none"> None</label>
-                        <label><input type="radio" name="radio.mode" value="usb"> USB</label>
-                        <label><input type="radio" name="radio.mode" value="data" checked> Data/Pkt</label>
+                    <label>Statistics:</label>
+                    <div class="storage-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Sample Rate:</span>
+                            <span class="stat-value" id="audio-sample-rate-stat">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Buffer Size:</span>
+                            <span class="stat-value" id="audio-buffer-size-stat">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Clip Rate:</span>
+                            <span class="stat-value" id="audio-clip-rate-stat">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Peak Hold:</span>
+                            <span class="stat-value" id="audio-peak-hold-stat">--</span>
+                        </div>
                     </div>
-
-                    <label for="radio-tx-audio-source">Transmit Audio Source:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.tx_audio_source" value="rear"> Rear/Data</label>
-                        <label><input type="radio" name="radio.tx_audio_source" value="front" checked> Front/Mic</label>
-                    </div>
-
-                    <label for="radio-split-operation">Split Operation:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="radio.split_operation" value="none"> None</label>
-                        <label><input type="radio" name="radio.split_operation" value="rig" checked> Rig</label>
-                        <label><input type="radio" name="radio.split_operation" value="fake"> Fake It</label>
-                    </div>
-
-                    <label for="radio-ptt-command">PTT Command:</label>
-                    <input type="text" id="radio-ptt-command" name="radio.ptt_command" placeholder="Optional PTT command">
-
-                    <label for="radio-tx-delay">TX Delay:</label>
-                    <input type="number" id="radio-tx-delay" name="radio.tx_delay" value="0.2" step="0.1" min="0" max="10"> s
-
-                </div>
-                <div class="test-buttons">
-                    <button type="button" id="test-ptt" class="test-button">Test PTT</button>
                 </div>
             </div>
 
@@ -534,7 +734,45 @@
                 </div>
             </div>
 
-            <div class="save-buttons">
+            <!-- Storage Configuration -->
+            <div class="config-section">
+                <h3>Storage Configuration</h3>
+                <div class="config-grid">
+                    <label for="storage-database-path">Database Path:</label>
+                    <input type="text" id="storage-database-path" name="storage.database_path" placeholder="./js8d.db">
+
+                    <label for="storage-max-messages">Max Messages:</label>
+                    <input type="number" id="storage-max-messages" name="storage.max_messages" min="0" max="1000000" placeholder="10000">
+
+                    <label>Current Statistics:</label>
+                    <div class="storage-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Messages:</span>
+                            <span class="stat-value" id="stat-total-messages">Loading...</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Received:</span>
+                            <span class="stat-value" id="stat-total-rx">Loading...</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Transmitted:</span>
+                            <span class="stat-value" id="stat-total-tx">Loading...</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Last Cleanup:</span>
+                            <span class="stat-value" id="stat-last-cleanup">Loading...</span>
+                        </div>
+                    </div>
+
+                    <label></label>
+                    <div class="storage-actions">
+                        <button type="button" id="refresh-stats" class="test-button">Refresh Stats</button>
+                        <button type="button" id="cleanup-messages" class="test-button" style="background-color: #f44336;">Clean Old Messages</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="save-buttons" style="display: none;">
                 <button type="submit" class="save-button">Save Configuration</button>
                 <button type="button" id="reload-config" class="reload-button">Reload Daemon</button>
             </div>
@@ -542,5 +780,6 @@
     </div>
 
     <script src="/static/js/settings.js"></script>
+    <script src="/static/js/audio-visualizer.js"></script>
 </body>
 </html>

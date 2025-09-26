@@ -73,8 +73,14 @@ type Config struct {
 	} `yaml:"storage"`
 
 	Logging struct {
-		Level string `yaml:"level"`
-		File  string `yaml:"file"`
+		Level       string `yaml:"level"`        // debug, info, warn, error
+		File        string `yaml:"file"`         // log file path
+		MaxSize     int    `yaml:"max_size"`     // maximum size in MB
+		MaxBackups  int    `yaml:"max_backups"`  // number of old log files to keep
+		MaxAge      int    `yaml:"max_age"`      // maximum age in days
+		Compress    bool   `yaml:"compress"`     // compress old log files
+		Console     bool   `yaml:"console"`      // also log to console/stdout
+		Structured  bool   `yaml:"structured"`   // use structured JSON logging
 	} `yaml:"logging"`
 
 	Hardware struct {
@@ -165,6 +171,24 @@ func LoadConfig(path string) (*Config, error) {
 		config.Storage.MaxMessages = 10000
 	}
 
+	// Set logging defaults
+	if config.Logging.Level == "" {
+		config.Logging.Level = "info"
+	}
+	// Only set default log file if not explicitly configured
+	// Empty file path means console-only logging
+	if config.Logging.MaxSize == 0 {
+		config.Logging.MaxSize = 100 // 100MB
+	}
+	if config.Logging.MaxBackups == 0 {
+		config.Logging.MaxBackups = 5
+	}
+	if config.Logging.MaxAge == 0 {
+		config.Logging.MaxAge = 30 // 30 days
+	}
+	// Console and Compress default to false
+	// Structured defaults to false
+
 	return &config, nil
 }
 
@@ -186,4 +210,114 @@ func (c *Config) Validate() error {
 		c.Audio.OutputDevice = "default"
 	}
 	return nil
+}
+
+// GetRadioName returns a friendly name for the radio model
+func (c *Config) GetRadioName() string {
+	switch c.Radio.Model {
+	case "1":
+		return "Hamlib Dummy"
+	case "2":
+		return "Yaesu FT-847"
+	case "120":
+		return "Yaesu FT-817"
+	case "122":
+		return "Yaesu FT-857"
+	case "135":
+		return "Yaesu FT-891"
+	case "1035":
+		return "Yaesu FT-991"
+	case "1001":
+		return "Yaesu FT-1000"
+	case "1007":
+		return "Yaesu FT-1000MP"
+	case "1014":
+		return "Yaesu FT-2000"
+	case "1020":
+		return "Yaesu FT-450"
+	case "1021":
+		return "Yaesu FT-950"
+	case "1024":
+		return "Yaesu FT-5000"
+	case "1027":
+		return "Yaesu FT-9000"
+	case "201":
+		return "Kenwood TS-50"
+	case "202":
+		return "Kenwood TS-440"
+	case "203":
+		return "Kenwood TS-450"
+	case "204":
+		return "Kenwood TS-570"
+	case "205":
+		return "Kenwood TS-680"
+	case "206":
+		return "Kenwood TS-690"
+	case "207":
+		return "Kenwood TS-711"
+	case "208":
+		return "Kenwood TS-790"
+	case "209":
+		return "Kenwood TS-811"
+	case "210":
+		return "Kenwood TS-850"
+	case "211":
+		return "Kenwood TS-870"
+	case "212":
+		return "Kenwood TS-940"
+	case "213":
+		return "Kenwood TS-950"
+	case "214":
+		return "Kenwood TS-2000"
+	case "229":
+		return "Kenwood TS-480"
+	case "230":
+		return "Kenwood TS-590"
+	case "231":
+		return "Kenwood TS-590SG"
+	case "232":
+		return "Kenwood TS-990"
+	case "235":
+		return "Kenwood TS-890"
+	case "301":
+		return "Icom IC-706"
+	case "306":
+		return "Icom IC-7000"
+	case "307":
+		return "Icom IC-7100"
+	case "311":
+		return "Icom IC-746"
+	case "315":
+		return "Icom IC-756"
+	case "318":
+		return "Icom IC-7200"
+	case "335":
+		return "Icom IC-7300"
+	case "360":
+		return "Icom IC-9100"
+	case "362":
+		return "Icom IC-7410"
+	case "363":
+		return "Icom IC-7700"
+	case "364":
+		return "Icom IC-7800"
+	case "365":
+		return "Icom IC-7600"
+	case "368":
+		return "Icom IC-7851"
+	case "2028":
+		return "Elecraft K3/KX3"
+	case "2029":
+		return "Elecraft KX2"
+	case "2030":
+		return "Elecraft K4"
+	case "10001":
+		return "QRP Labs QDX"
+	case "10002":
+		return "QRP Labs QMX"
+	case "":
+		return "No Radio"
+	default:
+		return fmt.Sprintf("Radio Model %s", c.Radio.Model)
+	}
 }

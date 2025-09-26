@@ -1,0 +1,53 @@
+[Unit]
+Description=JS8 Digital Mode Daemon
+Documentation=https://github.com/js8call/js8d
+After=network.target sound.target
+Wants=network.target
+
+[Service]
+Type=notify
+User=js8d
+Group=js8d
+ExecStart=/usr/local/bin/js8d -config /etc/js8d/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/js8d /var/log/js8d /run/js8d
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+# Environment
+Environment=JS8D_CONFIG_DIR=/etc/js8d
+Environment=JS8D_DATA_DIR=/var/lib/js8d
+Environment=JS8D_LOG_DIR=/var/log/js8d
+Environment=JS8D_RUN_DIR=/run/js8d
+
+# Working directory
+WorkingDirectory=/var/lib/js8d
+
+# Standard output and error
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=js8d
+
+[Install]
+WantedBy=multi-user.target

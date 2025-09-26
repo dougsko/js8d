@@ -6,6 +6,28 @@ package hardware
 #include <stdlib.h>
 #include <string.h>
 
+// Helper function to set device path using rig_set_conf (JS8Call approach)
+static int set_device_path(RIG *rig, const char *device_path) {
+    if (rig && device_path) {
+        token_t token = rig_token_lookup(rig, "rig_pathname");
+        if (token != RIG_CONF_END) {
+            return rig_set_conf(rig, token, device_path);
+        }
+    }
+    return -1;
+}
+
+// Helper function to set baud rate using rig_set_conf (JS8Call approach)
+static int set_baud_rate(RIG *rig, const char *baud_rate) {
+    if (rig && baud_rate) {
+        token_t token = rig_token_lookup(rig, "serial_speed");
+        if (token != RIG_CONF_END) {
+            return rig_set_conf(rig, token, baud_rate);
+        }
+    }
+    return -1;
+}
+
 // Helper function to get rig info as strings
 static void get_rig_info(RIG *rig, char **model, char **mfg, char **version) {
     const struct rig_caps *caps = rig->caps;
@@ -109,19 +131,36 @@ func (r *HamlibRadio) Initialize() error {
 		return fmt.Errorf("failed to initialize rig model %s", r.config.Model)
 	}
 
-	// Set device path (try direct access for now)
+	// Set device path
 	if r.config.Device != "" {
 		devicePath := C.CString(r.config.Device)
 		defer C.free(unsafe.Pointer(devicePath))
 
-		// For hamlib 4.x, we'll try to set the device path
-		// Note: This may not work on all versions, but core functions will still work
 		log.Printf("Hamlib: Setting device to %s", r.config.Device)
+
+		// Set the device path using rig_set_conf (JS8Call approach)
+		ret := C.set_device_path(r.rig, devicePath)
+		if ret != C.RIG_OK {
+			log.Printf("Hamlib: Warning - failed to set device path (%s), may use default", C.GoString(C.rigerror(ret)))
+		} else {
+			log.Printf("Hamlib: Device path set successfully")
+		}
 	}
 
-	// Log baud rate (will use hamlib defaults)
+	// Set baud rate explicitly
 	if r.config.BaudRate > 0 {
-		log.Printf("Hamlib: Will use baud rate %d (via hamlib defaults)", r.config.BaudRate)
+		baudStr := C.CString(fmt.Sprintf("%d", r.config.BaudRate))
+		defer C.free(unsafe.Pointer(baudStr))
+
+		log.Printf("Hamlib: Setting baud rate to %d", r.config.BaudRate)
+
+		// Set the baud rate using rig_set_conf (JS8Call approach)
+		ret := C.set_baud_rate(r.rig, baudStr)
+		if ret != C.RIG_OK {
+			log.Printf("Hamlib: Warning - failed to set baud rate (%s), using default", C.GoString(C.rigerror(ret)))
+		} else {
+			log.Printf("Hamlib: Baud rate set successfully")
+		}
 	}
 
 	// Open the rig connection

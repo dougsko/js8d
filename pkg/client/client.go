@@ -7,7 +7,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/js8call/js8d/pkg/protocol"
+	"github.com/dougsko/js8d/pkg/protocol"
 )
 
 // SocketClient represents a client connection to the core engine

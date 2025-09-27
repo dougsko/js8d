@@ -9,8 +9,14 @@ RUN apk add --no-cache \
     git \
     make \
     gcc \
+    g++ \
     musl-dev \
-    alsa-lib-dev
+    cmake \
+    pkgconfig \
+    alsa-lib-dev \
+    hamlib-dev \
+    eigen-dev \
+    boost-dev
 
 # Set working directory
 WORKDIR /src
@@ -33,6 +39,7 @@ FROM alpine:latest
 # Install runtime dependencies
 RUN apk add --no-cache \
     alsa-lib \
+    hamlib \
     ca-certificates \
     tzdata
 

@@ -1,6 +1,6 @@
-# js8d - Headless JS8Call Daemon
+# js8d - Headless JS8 Daemon
 
-A lightweight, headless implementation of JS8Call designed for Single Board Computers (SBC).
+A lightweight, headless implementation of JS8 digital mode designed for Single Board Computers (SBC).
 
 ## Features
 
@@ -33,16 +33,6 @@ open http://localhost:8080
 - **Web UI**: Mobile-first responsive interface
 - **SQLite Storage**: Message history and configuration
 
-## Development Status
-
-**MVP Phase (Target: 6-8 weeks)**
-- [ ] Basic JS8 Normal mode decode/encode
-- [ ] Web interface with essential functions
-- [ ] Hamlib radio control
-- [ ] Message storage
-- [ ] REST API endpoints
-- [ ] WebSocket real-time updates
-
 ## Building
 
 ```bash
@@ -62,4 +52,4 @@ GOOS=linux GOARCH=arm GOARM=6 go build -o js8d-pizero cmd/js8d/main.go
 
 ## License
 
-GPLv3 - Same as original JS8Call
+GPLv3

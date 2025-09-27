@@ -368,61 +368,65 @@ class SettingsManager {
         // Debug log to see what config we received
         console.log('Populating form with config:', this.config);
 
-        // Station Configuration (note capitalized field names from Go)
-        this.setFormValue('station-callsign', this.config.Station?.Callsign || '');
-        this.setFormValue('station-grid', this.config.Station?.Grid || '');
+        // Station Configuration (now using YAML field names)
+        this.setFormValue('station-callsign', this.config.station?.callsign || '');
+        this.setFormValue('station-grid', this.config.station?.grid || '');
 
         // Audio Configuration
-        this.setFormValue('audio-input', this.config.Audio?.InputDevice || 'default');
-        this.setFormValue('audio-input-channels', this.config.Audio?.InputChannels || 'mono');
-        this.setFormValue('audio-output', this.config.Audio?.OutputDevice || 'default');
-        this.setFormValue('audio-output-channels', this.config.Audio?.OutputChannels || 'mono');
-        this.setFormValue('audio-notification-output', this.config.Audio?.NotificationDevice || 'Built-in Output');
-        this.setFormValue('audio-sample-rate', this.config.Audio?.SampleRate || 48000);
-        this.setFormValue('audio-buffer-size', this.config.Audio?.BufferSize || 1024);
-        this.setFormValue('audio-save-directory', this.config.Audio?.SaveDirectory || '/Users/doug/Library/Application Support/JS8Call/save');
-        this.setFormValue('audio-remember-power-tx', this.config.Audio?.RememberPowerTx || false);
-        this.setFormValue('audio-remember-power-tune', this.config.Audio?.RememberPowerTune || false);
+        this.setFormValue('audio-input', this.config.audio?.input_device || 'default');
+        this.setFormValue('audio-input-channels', this.config.audio?.input_channels || 'mono');
+        this.setFormValue('audio-output', this.config.audio?.output_device || 'default');
+        this.setFormValue('audio-output-channels', this.config.audio?.output_channels || 'mono');
+        this.setFormValue('audio-notification-output', this.config.audio?.notification_device || 'Built-in Output');
+        this.setFormValue('audio-sample-rate', this.config.audio?.sample_rate || 48000);
+        this.setFormValue('audio-buffer-size', this.config.audio?.buffer_size || 1024);
+        this.setFormValue('audio-save-directory', this.config.audio?.save_directory || '/Users/doug/Library/Application Support/JS8Call/save');
+        this.setFormValue('audio-remember-power-tx', this.config.audio?.remember_power_tx || false);
+        this.setFormValue('audio-remember-power-tune', this.config.audio?.remember_power_tune || false);
 
         // Radio Configuration
-        this.setFormValue('radio-use-hamlib', this.config.Radio?.UseHamlib || false);
-        this.setFormValue('radio-model', this.config.Radio?.Model || '1');
-        this.setFormValue('radio-poll-interval', this.config.Radio?.PollInterval || 1000);
+        this.setFormValue('radio-use-hamlib', this.config.radio?.use_hamlib || false);
+        this.setFormValue('radio-model', this.config.radio?.model || '1');
+        this.setFormValue('radio-poll-interval', this.config.radio?.poll_interval || 1000);
 
         // Handle Hamlib dependency (do this after setting the values)
-        this.handleHamlibChange(this.config.Radio?.UseHamlib || false);
+        this.handleHamlibChange(this.config.radio?.use_hamlib || false);
 
         // CAT Control
-        this.setFormValue('radio-device', this.config.Radio?.Device || '/dev/ttyUSBmodem14201');
-        this.setFormValue('radio-baud-rate', this.config.Radio?.BaudRate || 115200);
-        this.setRadioValue('radio.data_bits', this.config.Radio?.DataBits || 'default');
-        this.setRadioValue('radio.stop_bits', this.config.Radio?.StopBits || 'default');
-        this.setRadioValue('radio.handshake', this.config.Radio?.Handshake || 'default');
-        this.setFormValue('radio-dtr', this.config.Radio?.DTR || 'default');
-        this.setFormValue('radio-rts', this.config.Radio?.RTS || 'default');
+        this.setFormValue('radio-device', this.config.radio?.device || '/dev/ttyUSBmodem14201');
+        this.setFormValue('radio-baud-rate', this.config.radio?.baud_rate || 115200);
+        this.setRadioValue('radio.data_bits', this.config.radio?.data_bits || 'default');
+        this.setRadioValue('radio.stop_bits', this.config.radio?.stop_bits || 'default');
+        this.setRadioValue('radio.handshake', this.config.radio?.handshake || 'default');
+        this.setFormValue('radio-dtr', this.config.radio?.dtr || 'default');
+        this.setFormValue('radio-rts', this.config.radio?.rts || 'default');
+
+        // CI-V Configuration (Icom Radios)
+        this.setFormValue('radio-civ-address', this.config.radio?.civ_address || '');
+        this.setFormValue('radio-civ-transceive', this.config.radio?.civ_transceive || false);
 
         // PTT Configuration
-        this.setRadioValue('radio.ptt_method', this.config.Radio?.PTTMethod || 'cat');
-        this.setRadioValue('radio.mode', this.config.Radio?.Mode || 'data');
-        this.setRadioValue('radio.tx_audio_source', this.config.Radio?.TxAudioSource || 'front');
-        this.setRadioValue('radio.split_operation', this.config.Radio?.SplitOperation || 'rig');
-        this.setFormValue('radio-ptt-command', this.config.Radio?.PTTCommand || '');
-        this.setFormValue('radio-tx-delay', this.config.Radio?.TxDelay || 0.2);
+        this.setRadioValue('radio.ptt_method', this.config.radio?.ptt_method || 'cat');
+        this.setRadioValue('radio.mode', this.config.radio?.mode || 'data');
+        this.setRadioValue('radio.tx_audio_source', this.config.radio?.tx_audio_source || 'front');
+        this.setRadioValue('radio.split_operation', this.config.radio?.split_operation || 'rig');
+        this.setFormValue('radio-ptt-command', this.config.radio?.ptt_command || '');
+        this.setFormValue('radio-tx-delay', this.config.radio?.tx_delay || 0.2);
 
         // Web Configuration
-        this.setFormValue('web-port', this.config.Web?.Port || 8080);
-        this.setFormValue('web-bind-address', this.config.Web?.BindAddress || '0.0.0.0');
+        this.setFormValue('web-port', this.config.web?.port || 8080);
+        this.setFormValue('web-bind-address', this.config.web?.bind_address || '0.0.0.0');
 
         // API Configuration
-        this.setFormValue('api-unix-socket', this.config.API?.UnixSocket || '/tmp/js8d.sock');
+        this.setFormValue('api-unix-socket', this.config.api?.unix_socket || '/tmp/js8d.sock');
 
         // Hardware Configuration
-        this.setFormValue('hardware-enable-gpio', this.config.Hardware?.EnableGPIO || false);
-        this.setFormValue('hardware-ptt-gpio-pin', this.config.Hardware?.PTTGPIOPin || 18);
-        this.setFormValue('hardware-status-led-pin', this.config.Hardware?.StatusLEDPin || 19);
-        this.setFormValue('hardware-enable-oled', this.config.Hardware?.EnableOLED || false);
-        this.setFormValue('hardware-oled-width', this.config.Hardware?.OLEDWidth || 128);
-        this.setFormValue('hardware-oled-height', this.config.Hardware?.OLEDHeight || 64);
+        this.setFormValue('hardware-enable-gpio', this.config.hardware?.enable_gpio || false);
+        this.setFormValue('hardware-ptt-gpio-pin', this.config.hardware?.ptt_gpio_pin || 18);
+        this.setFormValue('hardware-status-led-pin', this.config.hardware?.status_led_pin || 19);
+        this.setFormValue('hardware-enable-oled', this.config.hardware?.enable_oled || false);
+        this.setFormValue('hardware-oled-width', this.config.hardware?.oled_width || 128);
+        this.setFormValue('hardware-oled-height', this.config.hardware?.oled_height || 64);
     }
 
     setFormValue(elementId, value) {
@@ -520,7 +524,9 @@ class SettingsManager {
                 tx_audio_source: this.getRadioValue('radio.tx_audio_source'),
                 split_operation: this.getRadioValue('radio.split_operation'),
                 ptt_command: this.getFormValue('radio-ptt-command'),
-                tx_delay: this.getFormValue('radio-tx-delay')
+                tx_delay: this.getFormValue('radio-tx-delay'),
+                civ_address: this.getFormValue('radio-civ-address'),
+                civ_transceive: this.getFormValue('radio-civ-transceive')
             },
             web: {
                 port: this.getFormValue('web-port'),

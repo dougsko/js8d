@@ -8,15 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Find dependencies (optional for now)
 find_package(Boost QUIET COMPONENTS system)
 
-# Try to find Eigen from js8call vendor directory first
-set(EIGEN_INCLUDE_DIR "/Users/doug/bin/js8call/vendor/Eigen")
-if(NOT EXISTS ${EIGEN_INCLUDE_DIR})
-    # Try system Eigen
-    find_path(EIGEN_INCLUDE_DIR Eigen/Dense PATHS /usr/local/include /opt/local/include)
-    if(NOT EIGEN_INCLUDE_DIR)
-        message(WARNING "Eigen not found - some features may be disabled")
-        add_definitions(-DJS8DSP_NO_EIGEN)
-    endif()
+# Find system Eigen
+find_path(EIGEN_INCLUDE_DIR Eigen/Dense PATHS /usr/include/eigen3 /usr/local/include /opt/local/include)
+if(NOT EIGEN_INCLUDE_DIR)
+    message(WARNING "Eigen not found - some features may be disabled")
+    add_definitions(-DJS8DSP_NO_EIGEN)
 endif()
 
 # Include directories

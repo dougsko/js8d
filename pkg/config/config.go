@@ -29,6 +29,10 @@ type Config struct {
 		DTR       string `yaml:"dtr"`
 		RTS       string `yaml:"rts"`
 
+		// CI-V (Icom) Specific Parameters
+		CIVAddress   string `yaml:"civ_address"`   // CI-V Address (hex, e.g., "94" for IC-7300)
+		CIVTransceive bool   `yaml:"civ_transceive"` // CI-V Transceive ON/OFF
+
 		// PTT Configuration
 		PTTMethod      string  `yaml:"ptt_method"`
 		PTTPort        string  `yaml:"ptt_port"`

@@ -159,7 +159,74 @@ func (d *JS8Daemon) handleSettings(c *gin.Context) {
 
 // handleGetConfig returns the current configuration
 func (d *JS8Daemon) handleGetConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, d.config)
+	// Marshal to YAML then unmarshal to JSON via map to ensure
+	// field names match the YAML structure and JSON compatibility
+	yamlData, err := yaml.Marshal(d.config)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to marshal config: %v", err),
+		})
+		return
+	}
+
+	// Unmarshal YAML to interface{} then convert to JSON-compatible map
+	var yamlConfig interface{}
+	if err := yaml.Unmarshal(yamlData, &yamlConfig); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to unmarshal config: %v", err),
+		})
+		return
+	}
+
+	// Convert map[interface{}]interface{} to map[string]interface{} recursively
+	configMap := convertYamlToJson(yamlConfig)
+
+	c.JSON(http.StatusOK, configMap)
+}
+
+// convertYamlToJson converts YAML map[interface{}]interface{} to JSON-compatible map[string]interface{}
+func convertYamlToJson(i interface{}) interface{} {
+	switch x := i.(type) {
+	case map[interface{}]interface{}:
+		m2 := map[string]interface{}{}
+		for k, v := range x {
+			m2[k.(string)] = convertYamlToJson(v)
+		}
+		return m2
+	case []interface{}:
+		for i, v := range x {
+			x[i] = convertYamlToJson(v)
+		}
+	}
+	return i
+}
+
+// deepMerge recursively merges source map into destination map
+func deepMerge(dst, src map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	// First copy all dst values
+	for k, v := range dst {
+		result[k] = v
+	}
+
+	// Then merge src values
+	for k, v := range src {
+		if srcMap, srcOk := v.(map[string]interface{}); srcOk {
+			if dstMap, dstOk := result[k].(map[string]interface{}); dstOk {
+				// Both are maps, merge recursively
+				result[k] = deepMerge(dstMap, srcMap)
+			} else {
+				// Destination is not a map, replace with source
+				result[k] = v
+			}
+		} else {
+			// Source is not a map, replace destination
+			result[k] = v
+		}
+	}
+
+	return result
 }
 
 // handleSaveConfig saves the configuration to file
@@ -169,6 +236,29 @@ func (d *JS8Daemon) handleSaveConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Get current configuration and convert to map format
+	yamlData, err := yaml.Marshal(d.config)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to marshal current config: %v", err),
+		})
+		return
+	}
+
+	var currentConfig interface{}
+	if err := yaml.Unmarshal(yamlData, &currentConfig); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to unmarshal current config: %v", err),
+		})
+		return
+	}
+
+	// Convert to JSON-compatible format
+	currentConfigMap := convertYamlToJson(currentConfig).(map[string]interface{})
+
+	// Merge new configuration into current configuration
+	mergedConfig := deepMerge(currentConfigMap, newConfig)
 
 	// Validate audio device configuration if present
 	if audioConfig, exists := newConfig["Audio"]; exists {
@@ -208,8 +298,8 @@ func (d *JS8Daemon) handleSaveConfig(c *gin.Context) {
 		}
 	}
 
-	// Convert to YAML and save to file
-	yamlData, err := yaml.Marshal(newConfig)
+	// Convert merged config to YAML and save to file
+	yamlData, err = yaml.Marshal(mergedConfig)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": fmt.Sprintf("failed to marshal config: %v", err),
@@ -292,8 +382,8 @@ func (d *JS8Daemon) handleRetryRadioConnection(c *gin.Context) {
 
 // handleGetAudioDevices returns available audio devices
 func (d *JS8Daemon) handleGetAudioDevices(c *gin.Context) {
-	// Try to get real audio devices on macOS
-	if runtime.GOOS == "darwin" {
+	// Try to get real audio devices on macOS and Linux
+	if runtime.GOOS == "darwin" || runtime.GOOS == "linux" {
 		devices, err := getAvailableAudioDevices()
 		if err != nil {
 			log.Printf("Warning: Failed to enumerate audio devices: %v", err)
@@ -355,13 +445,13 @@ func (d *JS8Daemon) handleGetAudioDevices(c *gin.Context) {
 	c.JSON(http.StatusOK, devices)
 }
 
-// getAvailableAudioDevices wraps the CoreAudio device enumeration
+// getAvailableAudioDevices wraps the audio device enumeration
 func getAvailableAudioDevices() ([]AudioDeviceInfo, error) {
-	if runtime.GOOS != "darwin" {
-		return nil, fmt.Errorf("audio device enumeration only supported on macOS")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		return nil, fmt.Errorf("audio device enumeration only supported on macOS and Linux")
 	}
 
-	// Call the CoreAudio device enumeration from the hardware package
+	// Call the audio device enumeration from the hardware package
 	log.Printf("Attempting to enumerate audio devices...")
 	devices, err := hardware.GetAudioDevices()
 	if err != nil {
@@ -867,9 +957,14 @@ func (d *JS8Daemon) handleAudioWebSocket(c *gin.Context) {
 
 			// Convert to format expected by JavaScript client
 			data := map[string]interface{}{
-				"type": "spectrum",
+				"type": "audio_data",
 				"timestamp": vizData.SpectrumData.Timestamp,
 				"sample_rate": vizData.SpectrumData.SampleRate,
+				// VU meter data
+				"rms": vizData.AudioLevelData.RMSLevel,
+				"peak": vizData.AudioLevelData.PeakLevel,
+				"clipping": vizData.AudioLevelData.Clipping,
+				// Spectrum data
 				"spectrum": map[string]interface{}{
 					"bins": vizData.SpectrumData.Spectrum,
 					"freq_step": vizData.SpectrumData.FreqStep,

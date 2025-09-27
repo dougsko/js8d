@@ -40,8 +40,16 @@ func (ms *MessageStore) initialize() error {
 		return fmt.Errorf("failed to create database directory: %w", err)
 	}
 
+	// Handle empty database path
+	if ms.dbPath == "" {
+		ms.dbPath = "./js8d.db" // Default database path
+	}
+
+	// Build connection string properly with query parameters
+	connectionString := ms.dbPath + "?_busy_timeout=10000&_journal_mode=WAL&_foreign_keys=on"
+
 	// Open database connection
-	db, err := sql.Open("sqlite3", ms.dbPath+"?_busy_timeout=10000&_journal_mode=WAL&_foreign_keys=on")
+	db, err := sql.Open("sqlite3", connectionString)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

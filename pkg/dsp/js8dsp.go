@@ -9,6 +9,21 @@ import (
 	"github.com/mjibson/go-dsp/fft"
 )
 
+// DSPEngine defines the interface for JS8 DSP implementations
+type DSPEngine interface {
+	Initialize() error
+	Close()
+	SetSampleRate(rate int)
+	GetSampleRate() int
+	DecodeBuffer(audioData []int16, callback func(*DecodeResult)) (int, error)
+	EncodeMessage(message string, mode JS8Mode) ([]int16, error)
+	GetError() string
+	ValidateJS8Message(message string) error
+	GetJS8Alphabet() string
+	EstimateAudioDuration(mode JS8Mode) time.Duration
+	GetToneCount(mode JS8Mode) int
+}
+
 // JS8Mode represents JS8 submodes
 type JS8Mode int
 
@@ -119,28 +134,14 @@ func (d *DSP) DecodeBuffer(audioData []int16, callback func(*DecodeResult)) (int
 
 	// For each potential signal, attempt basic decoding
 	var decodeCount int
-	for _, freq := range signals {
-		// This is still simplified - real JS8 decoding would involve:
-		// 1. Costas array synchronization
-		// 2. Symbol extraction
-		// 3. LDPC decoding
-		// For now, create a result for detected signals
-		if freq >= 1400 && freq <= 1600 { // Common JS8 frequency range
-			result := &DecodeResult{
-				UTC:       int(time.Now().Unix()),
-				SNR:       12,
-				DT:        0.1,
-				Frequency: freq,
-				Message:   "JS8 SIGNAL DETECTED",
-				Type:      0,
-				Quality:   0.75,
-				Mode:      int(ModeNormal),
-			}
 
-			callback(result)
-			decodeCount++
-		}
-	}
+	// TODO: Replace with real C++ DSP library integration
+	// For now, disable fake signal generation to prevent spam
+	// Real JS8 signals will be processed once C++ library is integrated
+	_ = signals // Acknowledge we found signals but don't process them
+
+	// Return 0 decode count - no fake messages
+	decodeCount = 0
 
 	return decodeCount, nil
 }

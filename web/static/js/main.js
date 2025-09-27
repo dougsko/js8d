@@ -46,25 +46,30 @@ class JS8DClient {
 
         // Frequency change
         document.getElementById('frequency').addEventListener('change', (e) => {
-            this.setFrequency(parseInt(e.target.value));
+            // Convert kHz to Hz for backend
+            const freqKHz = parseFloat(e.target.value);
+            const freqHz = Math.round(freqKHz * 1000);
+            this.setFrequency(freqHz);
         });
 
-        // Spectrum display toggle
-        document.getElementById('toggle-spectrum').addEventListener('click', () => {
-            this.toggleSpectrum();
-        });
+        // Note: Sync frequency and emergency PTT OFF buttons removed from UI
 
-        // Initialize spectrum display
-        this.initSpectrumDisplay();
+        // Note: Spectrum display now handled by AudioVisualizer
     }
 
     initSpectrumDisplay() {
         this.spectrumActive = false;
         this.spectrumWebSocket = null;
-        this.spectrumCanvas = document.getElementById('main-spectrum-canvas');
-        this.waterfallCanvas = document.getElementById('main-waterfall-canvas');
+        this.spectrumCanvas = document.getElementById('spectrum-canvas');
+        this.waterfallCanvas = document.getElementById('waterfall-canvas');
         this.spectrumCtx = this.spectrumCanvas?.getContext('2d');
         this.waterfallCtx = this.waterfallCanvas?.getContext('2d');
+
+        // Initialize VU meters
+        this.inputVUCanvas = document.getElementById('input-vu-meter');
+        this.outputVUCanvas = document.getElementById('output-vu-meter');
+        this.inputVUCtx = this.inputVUCanvas?.getContext('2d');
+        this.outputVUCtx = this.outputVUCanvas?.getContext('2d');
 
         // Waterfall history buffer
         this.waterfallHistory = [];
@@ -143,6 +148,10 @@ class JS8DClient {
     }
 
     updateSpectrum(data) {
+        // Update VU meters
+        this.drawVUMeter(this.inputVUCtx, data.rms, data.peak, data.clipping);
+        this.drawVUMeter(this.outputVUCtx, data.rms, data.peak, data.clipping);
+
         if (!this.spectrumCtx || !this.waterfallCtx) return;
 
         // Update spectrum display
@@ -346,7 +355,9 @@ class JS8DClient {
 
     updateStatusFromData(data) {
         if (data.frequency) {
-            document.getElementById('frequency').value = data.frequency;
+            // Convert Hz to kHz for display
+            const freqKHz = (data.frequency / 1000).toFixed(1);
+            document.getElementById('frequency').value = freqKHz;
         }
         if (data.status) {
             document.getElementById('daemon-status').textContent = data.status;
@@ -532,6 +543,87 @@ class JS8DClient {
         }
     }
 
+    async syncFrequency() {
+        const button = document.getElementById('sync-frequency');
+        const originalText = button.textContent;
+
+        try {
+            button.textContent = '...';
+            button.disabled = true;
+
+            // Force a status update to get current frequency from radio
+            await this.updateStatus();
+
+            button.textContent = '✓';
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            }, 1000);
+
+        } catch (error) {
+            console.error('Failed to sync frequency:', error);
+            button.textContent = '✗';
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            }, 2000);
+        }
+    }
+
+    async emergencyPTTOff() {
+        const button = document.getElementById('emergency-ptt-off');
+        const originalText = button.textContent;
+
+        try {
+            button.textContent = 'TURNING OFF...';
+            button.disabled = true;
+
+            console.log('🚨 EMERGENCY PTT OFF triggered!');
+
+            const response = await fetch('/api/v1/radio/test-ptt-off', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+
+            if (response.ok) {
+                button.textContent = '✅ PTT OFF';
+                button.style.background = '#4CAF50';
+                console.log('✅ PTT turned OFF successfully');
+
+                // Update status immediately
+                await this.updateStatus();
+
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.background = '#ff4444';
+                    button.disabled = false;
+                }, 3000);
+            } else {
+                const error = await response.json();
+                console.error('❌ Failed to turn off PTT:', error);
+                button.textContent = '❌ FAILED';
+                alert(`Failed to turn off PTT: ${error.error}`);
+
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.disabled = false;
+                }, 2000);
+            }
+
+        } catch (error) {
+            console.error('❌ Emergency PTT OFF failed:', error);
+            button.textContent = '❌ ERROR';
+            alert('Emergency PTT OFF failed! Check connection or manually turn off radio.');
+
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.disabled = false;
+            }, 3000);
+        }
+    }
+
     async abortTransmission() {
         try {
             const response = await fetch('/api/v1/abort', {
@@ -631,6 +723,56 @@ class JS8DClient {
         if (this.progressTimeout) {
             clearTimeout(this.progressTimeout);
             this.progressTimeout = null;
+        }
+    }
+
+    drawVUMeter(ctx, rms, peak, clipping) {
+        if (!ctx) return;
+
+        const canvas = ctx.canvas;
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+
+        // Clear canvas
+        ctx.fillStyle = '#1e1e1e';
+        ctx.fillRect(0, 0, width, height);
+
+        // Convert dB to linear scale (0-1)
+        const rmsLinear = Math.max(0, Math.min(1, (rms + 60) / 60)); // -60dB to 0dB
+        const peakLinear = Math.max(0, Math.min(1, (peak + 60) / 60));
+
+        // Draw RMS level bar
+        const rmsWidth = rmsLinear * (width - 20);
+        const barHeight = height - 10;
+        const barY = 5;
+
+        // Color based on level
+        let rmsColor = '#4CAF50'; // Green
+        if (rms > -20) rmsColor = '#FF9800'; // Orange
+        if (rms > -6) rmsColor = '#f44336';  // Red
+        if (clipping) rmsColor = '#ff0000';  // Bright red
+
+        ctx.fillStyle = rmsColor;
+        ctx.fillRect(10, barY, rmsWidth, barHeight);
+
+        // Draw peak hold line
+        if (peak > -60) {
+            const peakX = 10 + peakLinear * (width - 20);
+            ctx.fillStyle = clipping ? '#ff0000' : '#ffffff';
+            ctx.fillRect(peakX - 1, barY - 2, 2, barHeight + 4);
+        }
+
+        // Draw level text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText(`RMS: ${rms.toFixed(1)}dB`, 10, height - 2);
+        ctx.fillText(`Peak: ${peak.toFixed(1)}dB`, width - 80, height - 2);
+
+        if (clipping) {
+            ctx.fillStyle = '#ff0000';
+            ctx.font = 'bold 10px monospace';
+            ctx.fillText('CLIP!', width / 2 - 15, height - 2);
         }
     }
 }

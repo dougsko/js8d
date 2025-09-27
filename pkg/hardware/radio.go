@@ -2,10 +2,12 @@ package hardware
 
 // RadioConfig represents radio configuration
 type RadioConfig struct {
-	Model    string // Hamlib model name or number
-	Device   string // Serial device path (e.g., /dev/ttyUSB0)
-	BaudRate int    // Serial baud rate
-	Enabled  bool   // Whether radio control is enabled
+	Model         string // Hamlib model name or number
+	Device        string // Serial device path (e.g., /dev/ttyUSB0)
+	BaudRate      int    // Serial baud rate
+	Enabled       bool   // Whether radio control is enabled
+	CIVAddress    string // CI-V Address (hex, e.g., "94" for IC-7300)
+	CIVTransceive bool   // CI-V Transceive ON/OFF
 }
 
 // RadioInterface defines radio control operations

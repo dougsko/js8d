@@ -219,10 +219,10 @@ func (e *JS8Encoder) EncodeMessage(message string, frameType int) ([]int, error)
 
 // GenerateAudio converts tone sequence to audio samples
 func (e *JS8Encoder) GenerateAudio(tones []int, sampleRate int) []int16 {
-	// JS8 Normal mode parameters
-	const duration = 15.0                       // seconds
-	const baseFreq = 1000.0                     // Hz
-	freqSpacing := float64(sampleRate) / 2048.0 // ~5.86 Hz for 12kHz
+	// JS8 Normal mode parameters (matching original JS8Call)
+	const duration = 15.0                    // seconds
+	const baseFreq = 1500.0                  // Hz (JS8Call standard)
+	const baseFreqSpacing = 6.25             // Hz (JS8Call standard spacing)
 
 	toneDuration := duration / float64(len(tones))
 	samplesPerTone := int(toneDuration * float64(sampleRate))
@@ -230,16 +230,24 @@ func (e *JS8Encoder) GenerateAudio(tones []int, sampleRate int) []int16 {
 
 	audio := make([]int16, totalSamples)
 	sampleIdx := 0
+	phase := 0.0  // Continuous phase for smooth tone transitions
 
 	for _, tone := range tones {
-		freq := baseFreq + float64(tone)*freqSpacing
+		freq := baseFreq + float64(tone)*baseFreqSpacing
 		omega := 2.0 * math.Pi * freq / float64(sampleRate)
 
 		for i := 0; i < samplesPerTone && sampleIdx < totalSamples; i++ {
-			// Generate sine wave
-			amplitude := 16384.0 // ~50% of int16 range
-			sample := amplitude * math.Sin(omega*float64(i))
+			// Generate sine wave with much higher amplitude
+			amplitude := 26000.0 // ~80% of int16 range for better QMX detection
+			sample := amplitude * math.Sin(phase)
 			audio[sampleIdx] = int16(sample)
+
+			phase += omega
+			// Keep phase in reasonable range
+			if phase > 2.0*math.Pi {
+				phase -= 2.0*math.Pi
+			}
+
 			sampleIdx++
 		}
 	}

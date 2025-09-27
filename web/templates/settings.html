@@ -499,6 +499,19 @@
                         <option value="low">Low</option>
                     </select>
 
+                    <!-- CI-V Configuration Divider (for Icom radios) -->
+                    <div style="grid-column: 1 / -1; border-top: 2px solid #FF9800; margin: 20px 0 15px 0; position: relative;">
+                        <span style="background: #2d2d2d; padding: 0 15px; color: #FF9800; font-weight: bold; position: absolute; top: -12px; left: 0;">CI-V Configuration (Icom Radios)</span>
+                    </div>
+
+                    <label for="radio-civ-address">CI-V Address:</label>
+                    <input type="text" id="radio-civ-address" name="radio.civ_address" placeholder="94" maxlength="2" style="width: 60px;" title="CI-V Address in hex (e.g., 94 for IC-7300)">
+
+                    <label>CI-V Transceive:</label>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="radio-civ-transceive" name="radio.civ_transceive" title="Enable CI-V Transceive for automatic updates">
+                    </div>
+
                     <!-- PTT Configuration Divider -->
                     <div style="grid-column: 1 / -1; border-top: 2px solid #4CAF50; margin: 20px 0 15px 0; position: relative;">
                         <span style="background: #2d2d2d; padding: 0 15px; color: #4CAF50; font-weight: bold; position: absolute; top: -12px; left: 0;">PTT Configuration</span>

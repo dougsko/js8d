@@ -5,6 +5,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dougsko/js8d/pkg/verbose"
 )
@@ -28,6 +29,8 @@ type HardwareConfig struct {
 	RadioModel     string
 	RadioDevice    string
 	RadioBaudRate  int
+	CIVAddress     string // CI-V Address (hex, e.g., "94" for IC-7300)
+	CIVTransceive  bool   // CI-V Transceive ON/OFF
 }
 
 // HardwareManager manages all hardware interfaces
@@ -169,10 +172,12 @@ func (h *HardwareManager) Initialize() error {
 
 		// Use Hamlib for radio control
 		radioConfig := RadioConfig{
-			Model:    h.config.RadioModel,
-			Device:   h.config.RadioDevice,
-			BaudRate: h.config.RadioBaudRate,
-			Enabled:  true,
+			Model:         h.config.RadioModel,
+			Device:        h.config.RadioDevice,
+			BaudRate:      h.config.RadioBaudRate,
+			Enabled:       true,
+			CIVAddress:    h.config.CIVAddress,
+			CIVTransceive: h.config.CIVTransceive,
 		}
 
 		// Choose between hamlib and mock radio based on configuration
@@ -184,13 +189,57 @@ func (h *HardwareManager) Initialize() error {
 			h.radio = NewMockRadio(radioConfig)
 		}
 
-		if err := h.radio.Initialize(); err != nil {
-			log.Printf("Hardware: Warning - failed to initialize radio: %v", err)
-			log.Printf("Hardware: Daemon will continue without radio connection - configure radio in web UI")
-			h.radio = nil // Clear the radio interface so methods know it's not available
-		} else {
-			log.Printf("Hardware: Radio initialized (%s on %s)",
-				h.config.RadioModel, h.config.RadioDevice)
+		// Initialize radio with timeout to prevent daemon hanging
+		log.Printf("Hardware: Initializing radio with 10-second timeout...")
+		initDone := make(chan error, 1)
+		tempRadio := h.radio // Keep reference for cleanup
+
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Hardware: Radio initialization panicked: %v", r)
+					initDone <- fmt.Errorf("radio initialization panicked: %v", r)
+				}
+			}()
+			initDone <- tempRadio.Initialize()
+		}()
+
+		select {
+		case err := <-initDone:
+			if err != nil {
+				log.Printf("Hardware: Warning - failed to initialize radio: %v", err)
+				log.Printf("Hardware: Daemon will continue without radio connection - configure radio in web UI")
+				h.radio = nil // Clear the radio interface so methods know it's not available
+			} else {
+				log.Printf("Hardware: Radio initialized successfully (%s on %s)",
+					h.config.RadioModel, h.config.RadioDevice)
+
+				// Fail-safe: Ensure PTT is OFF after initialization
+				log.Printf("Hardware: Ensuring PTT is OFF (fail-safe)")
+				if pttErr := tempRadio.SetPTT(false); pttErr != nil {
+					log.Printf("Hardware: Warning - failed to ensure PTT OFF: %v", pttErr)
+				} else {
+					log.Printf("Hardware: PTT confirmed OFF")
+				}
+			}
+		case <-time.After(10 * time.Second):
+			log.Printf("Hardware: ⚠️  Radio initialization timed out after 10 seconds")
+			log.Printf("Hardware: This usually means the radio is not responding or device is wrong")
+			log.Printf("Hardware: Daemon will continue without radio connection")
+			log.Printf("Hardware: Check radio connection, device path, and Hamlib configuration")
+
+			// Emergency PTT OFF attempt before giving up
+			log.Printf("Hardware: Emergency PTT OFF attempt before timeout...")
+			go func() {
+				if pttErr := tempRadio.SetPTT(false); pttErr != nil {
+					log.Printf("Hardware: Emergency PTT OFF failed: %v", pttErr)
+				} else {
+					log.Printf("Hardware: Emergency PTT OFF succeeded")
+				}
+			}()
+
+			h.radio = nil // Clear the radio interface
+			// Note: The goroutine may still be blocked, but daemon continues
 		}
 	}
 
@@ -622,10 +671,12 @@ func (h *HardwareManager) RetryRadioConnection() error {
 
 	// Create new radio configuration
 	radioConfig := RadioConfig{
-		Model:    h.config.RadioModel,
-		Device:   h.config.RadioDevice,
-		BaudRate: h.config.RadioBaudRate,
-		Enabled:  true,
+		Model:         h.config.RadioModel,
+		Device:        h.config.RadioDevice,
+		BaudRate:      h.config.RadioBaudRate,
+		Enabled:       true,
+		CIVAddress:    h.config.CIVAddress,
+		CIVTransceive: h.config.CIVTransceive,
 	}
 
 	// Choose between hamlib and mock radio based on configuration

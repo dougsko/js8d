@@ -20,8 +20,8 @@
             <div class="radio-status">
                 <div class="frequency">
                     <label>Frequency:</label>
-                    <input type="number" id="frequency" value="14078000" min="1000000" max="30000000">
-                    <span>Hz</span>
+                    <input type="number" id="frequency" value="14078.0" min="1000.0" max="30000.0" step="0.1">
+                    <span>kHz</span>
                 </div>
                 <div class="ptt-status">
                     <span id="ptt-indicator" class="ptt-off">PTT: OFF</span>
@@ -65,16 +65,22 @@
             <section class="spectrum-panel">
                 <div class="spectrum-header">
                     <h3>Audio Spectrum</h3>
-                    <div class="spectrum-controls">
-                        <button id="toggle-spectrum" type="button" class="spectrum-btn">Start Display</button>
-                        <label class="spectrum-label">
-                            <input type="checkbox" id="waterfall-enabled" checked> Waterfall
-                        </label>
+                </div>
+                <div class="audio-levels">
+                    <div class="vu-meters">
+                        <div class="vu-meter-container">
+                            <label>Input Level:</label>
+                            <canvas id="input-vu-meter" width="300" height="40"></canvas>
+                        </div>
+                        <div class="vu-meter-container">
+                            <label>Output Level:</label>
+                            <canvas id="output-vu-meter" width="300" height="40"></canvas>
+                        </div>
                     </div>
                 </div>
                 <div class="spectrum-display">
-                    <canvas id="main-spectrum-canvas" width="600" height="120"></canvas>
-                    <canvas id="main-waterfall-canvas" width="600" height="100"></canvas>
+                    <canvas id="spectrum-canvas" width="600" height="120"></canvas>
+                    <canvas id="waterfall-canvas" width="600" height="100"></canvas>
                 </div>
             </section>
 
@@ -111,5 +117,44 @@
     </div>
 
     <script src="/static/js/main.js"></script>
+    <script src="/static/js/audio-visualizer.js"></script>
+    <style>
+        .audio-levels {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #2e2e2e;
+            border-radius: 5px;
+        }
+
+        .vu-meters {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+
+        .vu-meter-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .vu-meter-container label {
+            font-size: 12px;
+            color: #ccc;
+        }
+
+        #input-vu-meter, #output-vu-meter {
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+
+        #spectrum-canvas, #waterfall-canvas {
+            display: block;
+            margin: 5px auto;
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+    </style>
 </body>
 </html>

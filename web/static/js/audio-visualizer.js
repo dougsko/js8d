@@ -9,6 +9,7 @@ class AudioVisualizer {
         this.spectrumCanvas = document.getElementById('spectrum-canvas');
         this.waterfallCanvas = document.getElementById('waterfall-canvas');
 
+
         // Canvas contexts
         this.inputVUCtx = this.inputVUCanvas?.getContext('2d');
         this.outputVUCtx = this.outputVUCanvas?.getContext('2d');
@@ -173,11 +174,12 @@ class AudioVisualizer {
         this.drawVUMeter(this.outputVUCtx, data.rms, data.peak, data.clipping);
 
         // Update spectrum display
-        if (data.spectrum && data.spectrum.length > 0) {
-            this.drawSpectrum(data.spectrum);
+        const spectrumBins = data.spectrum && data.spectrum.bins ? data.spectrum.bins : data.spectrum;
+        if (spectrumBins && spectrumBins.length > 0) {
+            this.drawSpectrum(spectrumBins);
 
             // Add to waterfall history
-            this.waterfallHistory.push(data.spectrum.slice());
+            this.waterfallHistory.push(spectrumBins.slice());
             if (this.waterfallHistory.length > this.maxWaterfallLines) {
                 this.waterfallHistory.shift();
             }
@@ -192,8 +194,10 @@ class AudioVisualizer {
         if (!ctx) return;
 
         const canvas = ctx.canvas;
-        const width = canvas.clientWidth;
-        const height = canvas.clientHeight;
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+
 
         // Clear canvas
         ctx.fillStyle = '#1e1e1e';
@@ -262,8 +266,9 @@ class AudioVisualizer {
 
         const canvas = this.spectrumCanvas;
         const ctx = this.spectrumCtx;
-        const width = canvas.clientWidth;
-        const height = canvas.clientHeight;
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
 
         // Clear canvas
         ctx.fillStyle = '#1e1e1e';
@@ -331,8 +336,9 @@ class AudioVisualizer {
 
         const canvas = this.waterfallCanvas;
         const ctx = this.waterfallCtx;
-        const width = canvas.clientWidth;
-        const height = canvas.clientHeight;
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
 
         // Clear canvas
         ctx.fillStyle = '#000';
@@ -451,9 +457,18 @@ let audioVisualizer = null;
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    // Only initialize if we're on the settings page with audio monitoring
+    // Only initialize if we're on a page with audio monitoring
     if (document.getElementById('input-vu-meter')) {
         audioVisualizer = new AudioVisualizer();
+
+        // Auto-start monitoring if no start button is present (main page)
+        if (!document.getElementById('start-audio-monitoring')) {
+            setTimeout(() => {
+                if (audioVisualizer) {
+                    audioVisualizer.startMonitoring();
+                }
+            }, 1000);
+        }
 
         // Load initial stats
         setTimeout(() => {

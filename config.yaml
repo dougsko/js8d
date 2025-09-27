@@ -1,39 +1,60 @@
-# js8d Configuration Example
-# Copy to config.yaml and customize for your station
-
-station:
-  callsign: "N0CALL"          # Your amateur radio callsign
-  grid: "EM12cd"              # Your Maidenhead grid square
-
-radio:
-  device: "/dev/ttyUSB0"      # Serial device for radio control
-  model: "Hamlib"             # Radio model (Hamlib auto-detect)
-  baud_rate: 4800             # Serial baud rate
-  ptt_method: "CAT"           # PTT method: CAT, GPIO, or NONE
-
-audio:
-  input_device: "default"                  # ALSA audio input device (or try "hw:0,0")
-  output_device: "default"                 # ALSA audio output device (or try "hw:0,0")
-  sample_rate: 48000          # Audio sample rate (48000 recommended)
-  buffer_size: 1024           # Audio buffer size
-
-web:
-  port: 8080                  # Web interface port
-  bind_address: "0.0.0.0"     # Bind address (0.0.0.0 for all interfaces)
-
 api:
-  websocket_port: 8081        # WebSocket port for real-time updates
-  unix_socket: "/tmp/js8d.sock"  # Unix domain socket path
-
-storage:
-  database_path: "./js8d.db"  # SQLite database file path
-  max_messages: 10000         # Maximum stored messages
-
-logging:
-  level: "info"               # Log level: debug, info, warn, error
-  file: ""                    # Log file path (empty for stdout)
-
+  unix_socket: /tmp/js8d.sock
+  websocket_port: 0
+audio:
+  buffer_size: 1024
+  input_channels: mono
+  input_device: default
+  notification_device: Built-in Output
+  output_channels: mono
+  output_device: default
+  remember_power_tune: false
+  remember_power_tx: false
+  sample_rate: 48000
+  save_directory: /Users/doug/Library/Application Support/JS8Call/save
 hardware:
-  ptt_gpio_pin: 18            # GPIO pin for PTT control (BCM numbering)
-  status_led_pin: 24          # GPIO pin for status LED
-  enable_gpio: false          # Enable GPIO features (requires root on Pi)
+  enable_gpio: false
+  enable_oled: false
+  oled_height: 64
+  oled_i2c_address: 0
+  oled_width: 128
+  ptt_gpio_pin: 18
+  status_led_pin: 24
+logging:
+  compress: false
+  console: false
+  file: ""
+  level: info
+  max_age: 30
+  max_backups: 5
+  max_size: 100
+  structured: false
+radio:
+  baud_rate: 115200
+  civ_address: ""
+  civ_transceive: false
+  data_bits: default
+  device: /dev/ttyUSB0
+  dtr: default
+  handshake: default
+  mode: data
+  model: "335"
+  poll_interval: 1000
+  ptt_command: ""
+  ptt_method: cat
+  ptt_port: ""
+  rts: default
+  split_operation: none
+  stop_bits: default
+  tx_audio_source: rear
+  tx_delay: 0.2
+  use_hamlib: true
+station:
+  callsign: K3DEP
+  grid: FN20
+storage:
+  database_path: ""
+  max_messages: 10000
+web:
+  bind_address: 0.0.0.0
+  port: 8080

@@ -2,7 +2,7 @@
 #define BASELINE_COMPUTATION_H
 
 #ifndef JS8DSP_NO_EIGEN
-#include <Dense>
+#include <Eigen/Dense>
 #endif
 #include <array>
 #include <vector>

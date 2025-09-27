@@ -176,12 +176,14 @@ class SettingsManager {
 
     async loadSerialDevices() {
         try {
+            console.log('Loading serial devices...');
             const response = await fetch('/api/v1/serial/devices');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
+            console.log('Serial devices response:', data);
             const deviceSelect = document.getElementById('radio-device');
 
             // Clear existing options
@@ -250,12 +252,14 @@ class SettingsManager {
 
     async loadAudioDevices() {
         try {
+            console.log('Loading audio devices...');
             const response = await fetch('/api/v1/audio/devices');
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
+            console.log('Audio devices response:', data);
 
             // Update input device dropdown
             const inputSelect = document.getElementById('audio-input');

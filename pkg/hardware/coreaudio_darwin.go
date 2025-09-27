@@ -724,8 +724,8 @@ func (a *CoreAudio) inputReaderWorker() {
 				lastLogTime = time.Now()
 			}
 
-			// Copy samples to avoid race conditions
-			samples := make([]int16, samplesRead)
+			// Copy samples to avoid race conditions using buffer pool
+			samples := GetAudioBufferSlice(samplesRead)
 			copy(samples, buffer[:samplesRead])
 
 			// Send to channel

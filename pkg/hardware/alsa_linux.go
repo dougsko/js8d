@@ -60,14 +60,13 @@ type ALSAAudio struct {
 func init() {
 	tryCreateALSAAudio = func(config ALSAAudioConfig) AudioInterface {
 		audio := NewALSAAudio(config)
-		// Test if ALSA is actually available by trying to initialize
-		if err := audio.Initialize(); err != nil {
-			log.Printf("ALSA: Initialization failed: %v", err)
+		// Test if ALSA is actually available by trying to validate devices
+		if err := audio.validateDevices(); err != nil {
+			log.Printf("ALSA: Device validation failed: %v", err)
 			log.Printf("ALSA: Falling back to mock audio - check device configuration")
-			audio.Close()
 			return nil
 		}
-		log.Printf("ALSA: Real ALSA audio system successfully initialized")
+		log.Printf("ALSA: Real ALSA audio system validated successfully")
 		return audio
 	}
 }
@@ -91,6 +90,37 @@ func NewALSAAudio(config ALSAAudioConfig) *ALSAAudio {
 		outputSamples: make(chan []int16, 10),
 		stopChan:      make(chan struct{}),
 	}
+}
+
+// validateDevices checks if the configured audio devices are available without opening them
+func (a *ALSAAudio) validateDevices() error {
+	// Test input device
+	if a.config.InputDevice != "" {
+		deviceName := C.CString(a.config.InputDevice)
+		defer C.free(unsafe.Pointer(deviceName))
+
+		var handle *C.snd_pcm_t
+		err := C.snd_pcm_open(&handle, deviceName, C.SND_PCM_STREAM_CAPTURE, C.SND_PCM_NONBLOCK)
+		if err < 0 {
+			return fmt.Errorf("input device %s not available: %s", a.config.InputDevice, C.GoString(C.alsa_strerror_wrapper(C.int(err))))
+		}
+		C.snd_pcm_close(handle)
+	}
+
+	// Test output device
+	if a.config.OutputDevice != "" {
+		deviceName := C.CString(a.config.OutputDevice)
+		defer C.free(unsafe.Pointer(deviceName))
+
+		var handle *C.snd_pcm_t
+		err := C.snd_pcm_open(&handle, deviceName, C.SND_PCM_STREAM_PLAYBACK, C.SND_PCM_NONBLOCK)
+		if err < 0 {
+			return fmt.Errorf("output device %s not available: %s", a.config.OutputDevice, C.GoString(C.alsa_strerror_wrapper(C.int(err))))
+		}
+		C.snd_pcm_close(handle)
+	}
+
+	return nil
 }
 
 // Initialize initializes the ALSA audio system
@@ -382,9 +412,10 @@ func (a *ALSAAudio) inputWorker() {
 			continue
 		}
 
-		// Copy samples to avoid race conditions
-		samples := make([]int16, ret*C.snd_pcm_sframes_t(a.config.Channels))
-		copy(samples, buffer[:ret*C.snd_pcm_sframes_t(a.config.Channels)])
+		// Copy samples to avoid race conditions using buffer pool
+		sampleCount := int(ret * C.snd_pcm_sframes_t(a.config.Channels))
+		samples := GetAudioBufferSlice(sampleCount)
+		copy(samples, buffer[:sampleCount])
 
 		// Send to channel
 		select {

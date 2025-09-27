@@ -30,7 +30,7 @@ type CoreEngine struct {
 	startTime  time.Time
 
 	// DSP and hardware components
-	dspEngine       *dsp.DSP
+	dspEngine       dsp.DSPEngine
 	hardwareManager *hardware.HardwareManager
 	audioMonitor    *audio.AudioLevelMonitor
 
@@ -39,9 +39,10 @@ type CoreEngine struct {
 	msgMutex     sync.RWMutex
 
 	// Radio state
-	frequency int
-	ptt       bool
-	connected bool
+	frequency        int
+	ptt              bool
+	connected        bool
+	fullyInitialized bool // Prevents transmissions during startup
 
 	// Channels for message processing
 	rxMessages chan protocol.Message
@@ -74,6 +75,8 @@ func NewCoreEngine(cfg *config.Config, socketPath, configPath string) *CoreEngin
 		RadioModel:     cfg.Radio.Model,
 		RadioDevice:    cfg.Radio.Device,
 		RadioBaudRate:  cfg.Radio.BaudRate,
+		CIVAddress:     cfg.Radio.CIVAddress,
+		CIVTransceive:  cfg.Radio.CIVTransceive,
 	}
 
 	// Set defaults if not specified
@@ -113,7 +116,7 @@ func NewCoreEngine(cfg *config.Config, socketPath, configPath string) *CoreEngin
 		rxMessages:      make(chan protocol.Message, 100),
 		txMessages:      make(chan protocol.Message, 100),
 		messageStore:    messageStore,
-		dspEngine:       dsp.NewDSP(),
+		dspEngine:       dsp.NewCppDSP(),
 		hardwareManager: hardware.NewHardwareManager(hardwareConfig),
 		audioMonitor:    audioMonitor,
 		abortTx:         make(chan bool, 1),
@@ -127,11 +130,12 @@ func (e *CoreEngine) Start() error {
 	e.running = true
 	e.mutex.Unlock()
 
-	// Initialize DSP engine
+	// Initialize DSP engine with correct sample rate
+	e.dspEngine.SetSampleRate(e.hardwareManager.GetConfig().SampleRate)
 	if err := e.dspEngine.Initialize(); err != nil {
 		return fmt.Errorf("failed to initialize DSP engine: %w", err)
 	}
-	log.Printf("DSP engine initialized successfully")
+	log.Printf("DSP engine initialized successfully (sample rate: %d Hz)", e.hardwareManager.GetConfig().SampleRate)
 
 	// Initialize hardware manager
 	if err := e.hardwareManager.Initialize(); err != nil {
@@ -188,6 +192,15 @@ func (e *CoreEngine) Start() error {
 
 	// Accept connections
 	go e.acceptConnections()
+
+	// Mark engine as fully initialized after a startup delay
+	go func() {
+		time.Sleep(5 * time.Second) // Allow time for all components to settle
+		e.mutex.Lock()
+		e.fullyInitialized = true
+		e.mutex.Unlock()
+		log.Printf("Engine: Fully initialized - transmissions now enabled")
+	}()
 
 	return nil
 }
@@ -320,9 +333,18 @@ func (e *CoreEngine) handleStatus() *protocol.Response {
 
 	// Get current frequency from radio if available
 	currentFreq := e.frequency // fallback to cached frequency
-	if e.hardwareManager != nil && e.hardwareManager.IsRadioConnected() {
-		if radioFreq, err := e.hardwareManager.GetRadioFrequency(); err == nil {
-			currentFreq = int(radioFreq)
+	radioConnected := false
+	if e.hardwareManager != nil {
+		radioConnected = e.hardwareManager.IsRadioConnected()
+		if radioConnected {
+			if radioFreq, err := e.hardwareManager.GetRadioFrequency(); err == nil {
+				currentFreq = int(radioFreq)
+				log.Printf("DEBUG: Got frequency from radio: %d Hz", currentFreq)
+			} else {
+				log.Printf("DEBUG: Failed to get frequency from radio: %v", err)
+			}
+		} else {
+			log.Printf("DEBUG: Radio not connected, using cached frequency: %d Hz", currentFreq)
 		}
 	}
 
@@ -516,6 +538,16 @@ func (e *CoreEngine) isRunning() bool {
 
 // transmitMessage encodes and transmits a message using the DSP engine
 func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
+	// Check if engine is fully initialized
+	e.mutex.RLock()
+	initialized := e.fullyInitialized
+	e.mutex.RUnlock()
+
+	if !initialized {
+		log.Printf("TX blocked: Engine not fully initialized yet, dropping message: %s", msg.Message)
+		return fmt.Errorf("engine not fully initialized - transmission blocked for safety")
+	}
+
 	// Set transmission state
 	e.txMutex.Lock()
 	e.transmitting = true
@@ -538,9 +570,15 @@ func (e *CoreEngine) transmitMessage(msg protocol.Message) error {
 	}
 
 	defer func() {
-		// Deactivate hardware PTT
-		if err := e.hardwareManager.SetRadioPTT(false); err != nil {
-			log.Printf("Warning: failed to clear radio PTT: %v", err)
+		// Deactivate hardware PTT - try multiple times if it fails
+		for attempts := 0; attempts < 3; attempts++ {
+			if err := e.hardwareManager.SetRadioPTT(false); err != nil {
+				log.Printf("Warning: failed to clear radio PTT (attempt %d/3): %v", attempts+1, err)
+				time.Sleep(100 * time.Millisecond) // Brief delay before retry
+			} else {
+				log.Printf("Radio PTT cleared successfully")
+				break
+			}
 		}
 
 		e.mutex.Lock()
@@ -613,6 +651,10 @@ func (e *CoreEngine) audioProcessor() {
 		case samples := <-inputSamples:
 			// Accumulate audio samples
 			audioBuffer = append(audioBuffer, samples...)
+
+			// Optionally recycle the buffer for improved performance
+			// This helps reduce GC pressure on resource-constrained devices
+			hardware.RecycleAudioSamples(samples)
 
 			// If buffer gets too large, trim it to prevent memory issues
 			if len(audioBuffer) > bufferLimit {

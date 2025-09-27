@@ -33,10 +33,37 @@ open http://localhost:8080
 - **Web UI**: Mobile-first responsive interface
 - **SQLite Storage**: Message history and configuration
 
+## Installing Dependencies
+
+### Debian/Ubuntu
+
+```bash
+# Update package list
+sudo apt update
+
+# Install Go (1.21+ required)
+sudo apt install golang-go
+
+# Install build tools and libraries
+sudo apt install build-essential cmake pkg-config
+
+# Install ALSA development libraries (for audio support)
+sudo apt install libasound2-dev
+
+# Install Hamlib development libraries (for radio control)
+sudo apt install libhamlib-dev
+
+# Optional: Install Eigen3 for advanced DSP features
+sudo apt install libeigen3-dev
+
+# Optional: Install Boost (used by some C++ components)
+sudo apt install libboost-all-dev
+```
+
 ## Building
 
 ```bash
-# Install dependencies
+# Install Go dependencies
 go mod download
 
 # Build DSP library
